@@ -159,6 +159,7 @@ export default function Dashboard() {
         <div className="mt-8 flex flex-wrap gap-3">
           <Link
             href="/story"
+            onClick={() => storage.setCurrentProjectId(null)}
             className="inline-flex items-center gap-2 px-5 py-3 rounded-md bg-primary text-black font-mono text-xs uppercase tracking-widest hover:bg-[#D4EB3A] transition-colors"
             data-testid="cta-new-project"
           >
@@ -190,6 +191,7 @@ export default function Dashboard() {
           title="New Story"
           desc="Brief → 3-act story with characters and palette"
           testId="quick-story"
+          onClick={() => storage.setCurrentProjectId(null)}
         />
         <QuickCard
           href="/generate"
@@ -380,16 +382,19 @@ function QuickCard({
   title,
   desc,
   testId,
+  onClick,
 }: {
   href: string;
   icon: React.ElementType;
   title: string;
   desc: string;
   testId: string;
+  onClick?: () => void;
 }) {
   return (
     <Link
       href={href}
+      onClick={onClick}
       className="border border-border rounded-md p-4 hover:border-primary group transition-colors"
       data-testid={testId}
     >

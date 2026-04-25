@@ -129,6 +129,7 @@ export default function History() {
         </div>
         <Link
           href="/story"
+          onClick={() => storage.setCurrentProjectId(null)}
           className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-primary text-black font-mono text-xs uppercase tracking-widest hover:bg-[#D4EB3A] transition-colors"
           data-testid="button-new-from-history"
         >
@@ -145,6 +146,7 @@ export default function History() {
           <p className="text-xs mt-2">Start creating to see them here.</p>
           <Link
             href="/story"
+            onClick={() => storage.setCurrentProjectId(null)}
             className="mt-6 inline-flex items-center gap-2 px-4 py-2 rounded-md bg-primary text-black font-mono text-xs uppercase tracking-widest hover:bg-[#D4EB3A] transition-colors"
           >
             Start a project

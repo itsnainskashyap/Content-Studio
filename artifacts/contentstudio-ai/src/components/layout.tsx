@@ -239,6 +239,7 @@ export function Layout({ children }: LayoutProps) {
           <span>Recent Projects</span>
           <Link
             href="/story"
+            onClick={() => storage.setCurrentProjectId(null)}
             className="text-primary hover:opacity-80"
             data-testid="link-new-project"
           >
