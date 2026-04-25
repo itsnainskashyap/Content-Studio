@@ -80,7 +80,7 @@ export default function MusicGenerator() {
 
   if (!project || !project.story) {
     return (
-      <div className="px-6 py-10 md:px-12 md:py-14 max-w-3xl mx-auto">
+      <div className="px-4 py-8 md:px-12 md:py-14 max-w-3xl mx-auto">
         <h1 className="font-display text-4xl md:text-5xl tracking-tight">
           Music Brief
         </h1>
@@ -101,7 +101,7 @@ export default function MusicGenerator() {
   const brief = call.data;
 
   return (
-    <div className="px-6 py-10 md:px-12 md:py-14 max-w-7xl mx-auto">
+    <div className="px-4 py-8 md:px-12 md:py-14 max-w-7xl mx-auto">
       <div className="text-xs font-mono uppercase tracking-widest text-muted-foreground">
         Project · {project.title}
       </div>

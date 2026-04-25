@@ -143,7 +143,7 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="px-6 py-10 md:px-12 md:py-14 max-w-6xl mx-auto">
+    <div className="px-4 py-8 md:px-12 md:py-14 max-w-6xl mx-auto">
       <div className="border-b border-border pb-10">
         <h1
           className="font-display text-5xl md:text-7xl leading-[0.95] tracking-tight text-foreground"

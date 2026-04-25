@@ -1,0 +1,44 @@
+uploads = []
+outputs = []
+
+[[generated]]
+id = "30H8PztRUbJF7Unec4_p2"
+uri = "file://artifacts/contentstudio-ai/public/landing-hero-bg.png"
+type = "image"
+title = "landing hero bg"
+
+[[generated]]
+id = "dq_0O16HA-CVFhm4ikij3"
+uri = "file://artifacts/contentstudio-ai/public/icon-story-chat.png"
+type = "image"
+title = "story chat icon"
+
+[[generated]]
+id = "dwTHL3ahyENRWqn49TEhy"
+uri = "file://artifacts/contentstudio-ai/public/icon-shot-list.png"
+type = "image"
+title = "shot list icon"
+
+[[generated]]
+id = "pUrOrqYgXihWTo0D1DAcp"
+uri = "file://artifacts/contentstudio-ai/public/icon-background-gen.png"
+type = "image"
+title = "bg generation icon"
+
+[[generated]]
+id = "TtFQvK3RWp2ASCMgEh1bj"
+uri = "file://artifacts/contentstudio-ai/public/icon-music-brief.png"
+type = "image"
+title = "music brief icon"
+
+[[generated]]
+id = "KLjyI9EIqnCn4SpPLIGmi"
+uri = "file://artifacts/contentstudio-ai/public/icon-voiceover.png"
+type = "image"
+title = "voiceover icon"
+
+[[generated]]
+id = "_YJ4P4sIBi-z4vgyqcc77"
+uri = "file://artifacts/contentstudio-ai/public/icon-honest-ai.png"
+type = "image"
+title = "honest ai icon"

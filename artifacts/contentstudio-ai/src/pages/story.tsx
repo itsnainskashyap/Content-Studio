@@ -327,7 +327,7 @@ export default function StoryBuilder() {
   };
 
   return (
-    <div className="px-6 py-10 md:px-12 md:py-14 max-w-6xl mx-auto">
+    <div className="px-4 py-8 md:px-12 md:py-14 max-w-6xl mx-auto">
       <div className="mb-8">
         <div className="text-xs font-mono uppercase tracking-widest text-muted-foreground">
           {finalized

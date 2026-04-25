@@ -117,7 +117,7 @@ export default function VoiceoverGenerator() {
 
   if (!project || !project.story) {
     return (
-      <div className="px-6 py-10 md:px-12 md:py-14 max-w-3xl mx-auto">
+      <div className="px-4 py-8 md:px-12 md:py-14 max-w-3xl mx-auto">
         <h1 className="font-display text-4xl md:text-5xl tracking-tight">
           Voiceover
         </h1>
@@ -136,7 +136,7 @@ export default function VoiceoverGenerator() {
   }
 
   return (
-    <div className="px-6 py-10 md:px-12 md:py-14 max-w-6xl mx-auto">
+    <div className="px-4 py-8 md:px-12 md:py-14 max-w-6xl mx-auto">
       <div className="text-xs font-mono uppercase tracking-widest text-muted-foreground">
         Project · {project.title}
       </div>

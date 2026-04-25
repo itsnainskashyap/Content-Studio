@@ -262,7 +262,7 @@ export function InlinePrompts({
       className="mt-12 border border-border rounded-md bg-card overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-300"
       data-testid="inline-prompts-section"
     >
-      <div className="px-6 py-4 border-b border-border bg-background/50 flex flex-wrap items-center gap-3">
+      <div className="px-4 md:px-6 py-4 border-b border-border bg-background/50 flex flex-wrap items-center gap-3">
         <div className="text-[10px] font-mono uppercase tracking-widest text-primary">
           Video Prompts
         </div>
@@ -283,7 +283,7 @@ export function InlinePrompts({
       </div>
 
       {/* Audio attachment */}
-      <div className="px-6 py-5 border-b border-border space-y-4">
+      <div className="px-4 md:px-6 py-5 border-b border-border space-y-4">
         {/* Voiceover row */}
         <div className="flex flex-wrap items-center gap-3">
           <div className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground w-24">
@@ -460,7 +460,7 @@ export function InlinePrompts({
       </div>
 
       {/* Generate / Next / Stop button */}
-      <div className="px-6 py-5 border-b border-border flex flex-wrap items-center gap-3">
+      <div className="px-4 md:px-6 py-5 border-b border-border flex flex-wrap items-center gap-3">
         {!generating && !awaitingNext && parts.length === 0 && (
           <button
             type="button"
@@ -548,7 +548,7 @@ export function InlinePrompts({
       </div>
 
       {job && (generating || awaitingNext) && (
-        <div className="px-6 py-4 border-b border-border">
+        <div className="px-4 md:px-6 py-4 border-b border-border">
           <div className="text-xs font-mono uppercase tracking-widest text-muted-foreground">
             {generating
               ? `Generating part ${job.current + 1} of ${job.total}…`
@@ -566,7 +566,7 @@ export function InlinePrompts({
       )}
 
       {job?.status === "error" && job.error && (
-        <div className="px-6 py-4 border-b border-border">
+        <div className="px-4 md:px-6 py-4 border-b border-border">
           <ErrorCard
             message={job.error}
             onRetry={job.parts.length > 0 ? generateNext : startGeneration}
@@ -575,7 +575,7 @@ export function InlinePrompts({
       )}
 
       {parts.length > 0 && (
-        <div className="px-6 py-6 space-y-6">
+        <div className="px-4 md:px-6 py-6 space-y-6">
           {parts.map((p, idx) => (
             <PartCard
               key={p.partNumber}
@@ -655,7 +655,7 @@ function PartCard({
           <div className="flex flex-wrap gap-2">
             {voLanguage !== "none" && part.autoVoiceoverScript && (
               <div
-                className="text-xs flex-1 min-w-[260px] px-3 py-2 rounded-md bg-emerald-500/5 border border-emerald-500/20"
+                className="text-xs flex-1 min-w-full sm:min-w-[260px] px-3 py-2 rounded-md bg-emerald-500/5 border border-emerald-500/20"
                 data-testid={`vo-block-${part.partNumber}`}
               >
                 <div className="text-[10px] font-mono uppercase tracking-widest text-emerald-300/80 flex items-center gap-1">
@@ -671,7 +671,7 @@ function PartCard({
               </div>
             )}
             {bgmName && (
-              <div className="text-xs flex-1 min-w-[200px] px-3 py-2 rounded-md bg-primary/5 border border-primary/20">
+              <div className="text-xs flex-1 min-w-full sm:min-w-[200px] px-3 py-2 rounded-md bg-primary/5 border border-primary/20">
                 <div className="text-[10px] font-mono uppercase tracking-widest text-primary/80 flex items-center gap-1">
                   <MusicIcon className="w-3 h-3" /> BGM
                 </div>

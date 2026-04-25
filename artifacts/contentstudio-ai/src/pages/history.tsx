@@ -107,7 +107,7 @@ export default function History() {
   };
 
   return (
-    <div className="px-6 py-10 md:px-12 md:py-14 max-w-6xl mx-auto">
+    <div className="px-4 py-8 md:px-12 md:py-14 max-w-6xl mx-auto">
       <div className="flex items-end justify-between flex-wrap gap-4">
         <div>
           <div className="text-xs font-mono uppercase tracking-widest text-muted-foreground">

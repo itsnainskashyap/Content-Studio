@@ -6,13 +6,20 @@ import {
   CheckCircle2,
   ChevronDown,
   Quote,
-  Triangle,
-  Square,
-  Circle,
-  Hexagon,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { BrandLogo } from "@/components/brand-logo";
+
+const ASSET_BASE = import.meta.env.BASE_URL;
+const HERO_BG = `${ASSET_BASE}landing-hero-bg.png`;
+const ICONS = {
+  storyChat: `${ASSET_BASE}icon-story-chat.png`,
+  shotList: `${ASSET_BASE}icon-shot-list.png`,
+  backgroundGen: `${ASSET_BASE}icon-background-gen.png`,
+  musicBrief: `${ASSET_BASE}icon-music-brief.png`,
+  voiceover: `${ASSET_BASE}icon-voiceover.png`,
+  honestAi: `${ASSET_BASE}icon-honest-ai.png`,
+};
 
 export default function Landing() {
   const [, navigate] = useLocation();
@@ -90,36 +97,22 @@ export default function Landing() {
         </div>
       </header>
 
-      {/* Hero with parallax background */}
+      {/* Hero with parallax photographic background */}
       <section className="hero" ref={heroRef}>
         <div
-          className="hero-bg"
-          style={{ transform: `translateY(${scrollY * 0.35}px)` }}
+          className="hero-photo"
+          style={{
+            backgroundImage: `url(${HERO_BG})`,
+            transform: `translateY(${scrollY * 0.25}px) scale(1.08)`,
+          }}
+          aria-hidden="true"
         />
+        <div className="hero-photo-overlay" aria-hidden="true" />
         <div
           className="hero-grid"
-          style={{ transform: `translateY(${scrollY * 0.18}px)` }}
+          style={{ transform: `translateY(${scrollY * 0.12}px)` }}
         />
         <div className="hero-glow" />
-
-        <div className="hero-shapes" aria-hidden="true">
-          <Triangle
-            className="shape shape-1"
-            style={{ transform: `translateY(${scrollY * -0.4}px) rotate(12deg)` }}
-          />
-          <Square
-            className="shape shape-2"
-            style={{ transform: `translateY(${scrollY * -0.25}px) rotate(-8deg)` }}
-          />
-          <Circle
-            className="shape shape-3"
-            style={{ transform: `translateY(${scrollY * -0.55}px)` }}
-          />
-          <Hexagon
-            className="shape shape-4"
-            style={{ transform: `translateY(${scrollY * -0.32}px) rotate(20deg)` }}
-          />
-        </div>
 
         <div className="hero-inner">
           <div className="hero-eyebrow">
@@ -239,8 +232,14 @@ export default function Landing() {
         <div className="feature-grid">
           {FEATURES.map((f, i) => (
             <div className="feature-card" key={f.title} data-reveal style={{ animationDelay: `${i * 60}ms` }}>
-              <div className="feature-icon" style={{ background: f.color }}>
-                <f.Icon />
+              <div className="feature-icon-img-wrap">
+                <img
+                  src={f.iconSrc}
+                  alt={f.iconAlt}
+                  className="feature-icon-img"
+                  loading="lazy"
+                  decoding="async"
+                />
               </div>
               <h3>{f.title}</h3>
               <p>{f.body}</p>
@@ -435,44 +434,44 @@ export default function Landing() {
 const FEATURES: Array<{
   title: string;
   body: string;
-  color: string;
-  Icon: () => React.ReactElement;
+  iconSrc: string;
+  iconAlt: string;
 }> = [
   {
     title: "Story chat",
     body: "Brief in, story out. Then refine via chat — \"make act 2 darker\", \"swap the protagonist\" — until it feels right.",
-    color: "linear-gradient(135deg,#E8FF47,#B7E212)",
-    Icon: () => <Triangle />,
+    iconSrc: ICONS.storyChat,
+    iconAlt: "Story chat icon",
   },
   {
     title: "Shot-by-shot prompts",
     body: "Each 15s part comes with a full shot list, named effects, density map and energy arc — paste-ready into Seedance 2.0.",
-    color: "linear-gradient(135deg,#FF6B6B,#C0392B)",
-    Icon: () => <Square />,
+    iconSrc: ICONS.shotList,
+    iconAlt: "Shot list icon",
   },
   {
     title: "Background generation",
     body: "Hit Finalize and walk away. Every part keeps generating in the background and saves itself as it goes.",
-    color: "linear-gradient(135deg,#4ECDC4,#1A8B82)",
-    Icon: () => <Circle />,
+    iconSrc: ICONS.backgroundGen,
+    iconAlt: "Background generation icon",
   },
   {
     title: "Music brief",
     body: "Get a tempo, mood and instrument list per part — and a copy-ready prompt for Suno or Udio.",
-    color: "linear-gradient(135deg,#A78BFA,#6D28D9)",
-    Icon: () => <Hexagon />,
+    iconSrc: ICONS.musicBrief,
+    iconAlt: "Music brief icon",
   },
   {
     title: "Voiceover EN · हिंदी · Hinglish",
     body: "Native scripts in three languages. Word counts tuned to part length. ElevenLabs-ready.",
-    color: "linear-gradient(135deg,#FB923C,#C2410C)",
-    Icon: () => <Triangle />,
+    iconSrc: ICONS.voiceover,
+    iconAlt: "Voiceover icon",
   },
   {
     title: "Honest, literal AI",
     body: "Your brief is law. The model never invents characters or settings outside what you wrote.",
-    color: "linear-gradient(135deg,#34D399,#0F766E)",
-    Icon: () => <Square />,
+    iconSrc: ICONS.honestAi,
+    iconAlt: "Honest AI icon",
   },
 ];
 

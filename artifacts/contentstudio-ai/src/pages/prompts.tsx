@@ -134,7 +134,7 @@ export default function PromptGenerator() {
   // No project / story state
   if (!project || !project.story) {
     return (
-      <div className="px-6 py-10 md:px-12 md:py-14 max-w-3xl mx-auto">
+      <div className="px-4 py-8 md:px-12 md:py-14 max-w-3xl mx-auto">
         <h1 className="font-display text-4xl md:text-5xl tracking-tight">
           Video Prompts
         </h1>
@@ -155,7 +155,7 @@ export default function PromptGenerator() {
   // Style selection state
   if (!style && parts.length === 0) {
     return (
-      <div className="px-6 py-10 md:px-12 md:py-14 max-w-6xl mx-auto">
+      <div className="px-4 py-8 md:px-12 md:py-14 max-w-6xl mx-auto">
         <div className="text-xs font-mono uppercase tracking-widest text-muted-foreground">
           Step 1 of 2 · Pick a style
         </div>
@@ -194,7 +194,7 @@ export default function PromptGenerator() {
 
   // Selected style → duration + generate
   return (
-    <div className="px-6 py-10 md:px-12 md:py-14 max-w-6xl mx-auto">
+    <div className="px-4 py-8 md:px-12 md:py-14 max-w-6xl mx-auto">
       <div className="text-xs font-mono uppercase tracking-widest text-muted-foreground">
         Project · {project.title}
       </div>
