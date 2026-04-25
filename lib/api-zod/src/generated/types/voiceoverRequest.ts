@@ -5,18 +5,15 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { StoryBeat } from "./storyBeat";
+import type { StoryResponse } from "./storyResponse";
 
 export interface VoiceoverRequest {
-  title?: string;
-  logline?: string;
-  beats?: StoryBeat[];
-  /** english | hindi | hinglish */
+  story: StoryResponse;
+  style?: string;
   language: string;
-  /** e.g. warm-female, deep-male, narrator, conversational */
-  voiceProfile?: string;
-  /** slow | medium | fast */
-  pacing?: string;
-  wordsPerMinute?: number;
-  styleNotes?: string;
+  tone: string;
+  duration: number;
+  part: number;
+  /** slow | normal | fast */
+  pace?: string;
 }

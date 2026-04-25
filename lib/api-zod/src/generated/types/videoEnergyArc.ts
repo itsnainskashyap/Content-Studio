@@ -6,9 +6,8 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface StoryRequest {
-  brief: string;
-  genre: string;
-  /** Total target duration in seconds */
-  duration: number;
+export interface VideoEnergyArc {
+  act1: string;
+  act2: string;
+  act3: string;
 }

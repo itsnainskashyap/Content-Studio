@@ -5,14 +5,18 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { VoiceoverLine } from "./voiceoverLine";
+import type { VoiceoverAlternateVersion } from "./voiceoverAlternateVersion";
 
 export interface VoiceoverResponse {
+  /** english | hindi | hinglish */
   language: string;
-  voiceProfile: string;
+  script: string;
   wordCount: number;
-  estimatedDuration: number;
-  lines: VoiceoverLine[];
-  fullScript: string;
-  deliveryGuide: string;
+  estimatedDuration: string;
+  tone: string;
+  deliveryNotes: string;
+  emphasisWords: string[];
+  alternateVersions: VoiceoverAlternateVersion[];
+  elevenlabsPrompt: string;
+  copyableScript: string;
 }

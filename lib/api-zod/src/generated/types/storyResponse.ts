@@ -5,12 +5,16 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { StoryBeat } from "./storyBeat";
+import type { StoryAct } from "./storyAct";
+import type { StoryCharacter } from "./storyCharacter";
 
 export interface StoryResponse {
   title: string;
-  logline: string;
-  genre: string;
-  tone: string;
-  beats: StoryBeat[];
+  synopsis: string;
+  acts: StoryAct[];
+  characters: StoryCharacter[];
+  mood: string;
+  /** List of hex color strings, e.g. ["#1a1a1a", "#E8FF47"] */
+  colorPalette: string[];
+  musicSuggestion: string;
 }

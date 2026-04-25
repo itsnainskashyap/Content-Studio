@@ -1,146 +1,259 @@
-import { useState, useEffect } from "react";
-import { Link } from "wouter";
-import { storage, Project } from "@/lib/storage";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Search, Filter, Trash2, Calendar, FolderOpen, ArrowRight } from "lucide-react";
-import { toast } from "sonner";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useLocation } from "wouter";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
+  Trash2,
+  Copy as CopyIcon,
+  FolderOpen,
+  Sparkles,
+  Search,
+} from "lucide-react";
+import { toast } from "sonner";
+import { storage, type Project } from "@/lib/storage";
+
+type SortKey = "newest" | "oldest" | "most_shots";
 
 export default function History() {
+  const [, navigate] = useLocation();
   const [projects, setProjects] = useState<Project[]>([]);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [filterType, setFilterType] = useState("all");
+  const [filterStyle, setFilterStyle] = useState<string>("__all");
+  const [search, setSearch] = useState("");
+  const [sortKey, setSortKey] = useState<SortKey>("newest");
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
   useEffect(() => {
-    setProjects(storage.getProjects());
+    refresh();
+    // open a project if ?id= is set
+    const params = new URLSearchParams(window.location.search);
+    const id = params.get("id");
+    if (id) {
+      storage.setCurrentProjectId(id);
+    }
   }, []);
 
-  const deleteProject = (id: string) => {
+  const refresh = () => setProjects(storage.getProjects());
+
+  const styles = useMemo(() => {
+    const set = new Set<string>();
+    projects.forEach((p) => p.style && set.add(p.style));
+    return Array.from(set);
+  }, [projects]);
+
+  const visible = useMemo(() => {
+    let list = [...projects];
+    if (filterStyle !== "__all") {
+      list = list.filter((p) => p.style === filterStyle);
+    }
+    if (search.trim()) {
+      const q = search.trim().toLowerCase();
+      list = list.filter(
+        (p) =>
+          p.title.toLowerCase().includes(q) ||
+          p.brief.toLowerCase().includes(q),
+      );
+    }
+    list.sort((a, b) => {
+      if (sortKey === "newest")
+        return b.updatedAt.localeCompare(a.updatedAt);
+      if (sortKey === "oldest")
+        return a.updatedAt.localeCompare(b.updatedAt);
+      return storage.totalShots(b) - storage.totalShots(a);
+    });
+    return list;
+  }, [projects, filterStyle, search, sortKey]);
+
+  const open = (p: Project) => {
+    storage.setCurrentProjectId(p.id);
+    window.dispatchEvent(new Event("cs:projects-changed"));
+    navigate("/story");
+  };
+
+  const duplicate = (p: Project) => {
+    const copy = storage.duplicateProject(p.id);
+    if (copy) {
+      window.dispatchEvent(new Event("cs:projects-changed"));
+      refresh();
+      toast.success("Project duplicated");
+    }
+  };
+
+  const remove = (id: string) => {
     storage.deleteProject(id);
-    setProjects(storage.getProjects());
+    window.dispatchEvent(new Event("cs:projects-changed"));
+    setConfirmDelete(null);
+    refresh();
     toast.success("Project deleted");
   };
 
-  const filteredProjects = projects.filter(p => {
-    const matchesSearch = p.title.toLowerCase().includes(searchTerm.toLowerCase());
-    if (!matchesSearch) return false;
-    
-    switch (filterType) {
-      case "story": return !!p.story;
-      case "prompts": return !!p.prompts;
-      case "music": return !!p.music;
-      case "voiceover": return !!p.voiceover;
-      default: return true;
-    }
-  });
-
   return (
-    <div className="space-y-6 animate-in fade-in duration-500">
-      <div>
-        <h1 className="text-4xl font-display mb-2">Archive</h1>
-        <p className="text-muted-foreground">Manage and retrieve all your generated content.</p>
+    <div className="px-6 py-10 md:px-12 md:py-14 max-w-6xl mx-auto">
+      <div className="flex items-end justify-between flex-wrap gap-4">
+        <div>
+          <div className="text-xs font-mono uppercase tracking-widest text-muted-foreground">
+            All projects
+          </div>
+          <h1 className="mt-1 font-display text-4xl md:text-5xl tracking-tight">
+            History
+          </h1>
+        </div>
+        <Link
+          href="/story"
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-primary text-black font-mono text-xs uppercase tracking-widest hover:bg-[#D4EB3A] transition-colors"
+          data-testid="button-new-from-history"
+        >
+          <Sparkles className="w-4 h-4" /> New project
+        </Link>
       </div>
 
-      <div className="flex flex-col md:flex-row gap-4 mb-6 bg-card border border-border p-4">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input 
-            placeholder="Search projects..." 
-            className="pl-9 rounded-none border-border focus-visible:ring-primary bg-background"
-            value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
-          />
-        </div>
-        <div className="w-full md:w-48">
-          <Select value={filterType} onValueChange={setFilterType}>
-            <SelectTrigger className="rounded-none border-border bg-background">
-              <Filter className="w-4 h-4 mr-2 text-muted-foreground" />
-              <SelectValue placeholder="Filter by type" />
-            </SelectTrigger>
-            <SelectContent className="rounded-none">
-              <SelectItem value="all">All Content</SelectItem>
-              <SelectItem value="story">Story</SelectItem>
-              <SelectItem value="prompts">Prompts</SelectItem>
-              <SelectItem value="music">Music</SelectItem>
-              <SelectItem value="voiceover">Voiceover</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-
-      {filteredProjects.length === 0 ? (
-        <div className="border border-dashed border-border p-12 text-center text-muted-foreground bg-card/30">
-          <FolderOpen className="w-12 h-12 mx-auto mb-4 opacity-20" />
-          <h3 className="font-display text-xl text-foreground">No projects found</h3>
-          <p className="text-sm mt-2">Adjust your filters or create something new.</p>
+      {projects.length === 0 ? (
+        <div className="mt-10 border border-border rounded-md p-12 text-center text-muted-foreground">
+          <FolderOpen className="w-10 h-10 mx-auto mb-3 opacity-30" />
+          <p className="font-mono text-xs uppercase tracking-widest">
+            No projects yet
+          </p>
+          <p className="text-xs mt-2">Start creating to see them here.</p>
+          <Link
+            href="/story"
+            className="mt-6 inline-flex items-center gap-2 px-4 py-2 rounded-md bg-primary text-black font-mono text-xs uppercase tracking-widest hover:bg-[#D4EB3A] transition-colors"
+          >
+            Start a project
+          </Link>
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4">
-          {filteredProjects.map((project) => (
-            <Card key={project.id} className="rounded-none border-border bg-card group hover:border-primary/50 transition-colors">
-              <CardContent className="p-6 flex flex-col md:flex-row gap-6 justify-between items-start md:items-center">
-                <div className="space-y-2 flex-1">
-                  <h3 className="font-display text-2xl group-hover:text-primary transition-colors">{project.title}</h3>
-                  <div className="flex items-center gap-4 text-xs font-mono text-muted-foreground">
-                    <span className="flex items-center gap-1">
-                      <Calendar className="w-3 h-3" />
-                      {new Date(project.updatedAt).toLocaleDateString()}
+        <>
+          <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="relative">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search…"
+                className="w-full bg-background border border-border rounded-md pl-9 pr-3 py-2 text-sm focus:outline-none focus:border-primary"
+                data-testid="input-search"
+              />
+            </div>
+            <select
+              value={filterStyle}
+              onChange={(e) => setFilterStyle(e.target.value)}
+              className="bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:border-primary"
+              data-testid="select-filter-style"
+            >
+              <option value="__all">All styles</option>
+              {styles.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+            <select
+              value={sortKey}
+              onChange={(e) => setSortKey(e.target.value as SortKey)}
+              className="bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:border-primary"
+              data-testid="select-sort"
+            >
+              <option value="newest">Newest first</option>
+              <option value="oldest">Oldest first</option>
+              <option value="most_shots">Most shots</option>
+            </select>
+          </div>
+
+          <div className="mt-6 divide-y divide-border border border-border rounded-md">
+            {visible.map((p) => (
+              <div
+                key={p.id}
+                className="flex items-center gap-4 p-4 hover:bg-secondary/30 transition-colors"
+                data-testid={`history-row-${p.id}`}
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="font-display text-2xl tracking-tight truncate">
+                    {p.title}
+                  </div>
+                  <div className="mt-1 flex flex-wrap gap-2 text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
+                    {p.style && (
+                      <span className="px-1.5 py-0.5 border border-border rounded">
+                        {p.style}
+                      </span>
+                    )}
+                    <span className="px-1.5 py-0.5 border border-border rounded">
+                      {p.totalDuration}s
                     </span>
-                    <span className="opacity-50">|</span>
-                    <div className="flex gap-2">
-                      {project.story && <span className="bg-secondary px-2 py-0.5 text-foreground uppercase border border-border">Story</span>}
-                      {project.prompts && <span className="bg-secondary px-2 py-0.5 text-foreground uppercase border border-border">Prompts</span>}
-                      {project.music && <span className="bg-secondary px-2 py-0.5 text-foreground uppercase border border-border">Music</span>}
-                      {project.voiceover && <span className="bg-secondary px-2 py-0.5 text-foreground uppercase border border-border">VO</span>}
-                    </div>
+                    <span className="px-1.5 py-0.5 border border-border rounded">
+                      {storage.totalShots(p)} shots
+                    </span>
+                    <span>· {new Date(p.updatedAt).toLocaleString()}</span>
                   </div>
                 </div>
-                
-                <div className="flex gap-2 w-full md:w-auto">
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button variant="outline" size="icon" className="rounded-none border-border hover:bg-destructive hover:text-destructive-foreground hover:border-destructive shrink-0">
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent className="rounded-none border-border bg-card">
-                      <AlertDialogHeader>
-                        <AlertDialogTitle className="font-display tracking-wide">Delete Project?</AlertDialogTitle>
-                        <AlertDialogDescription className="font-sans">
-                          This will permanently delete "{project.title}" and all its associated content. This action cannot be undone.
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel className="rounded-none font-mono text-xs uppercase">Cancel</AlertDialogCancel>
-                        <AlertDialogAction onClick={() => deleteProject(project.id)} className="rounded-none font-mono text-xs uppercase bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                          Delete
-                        </AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
-                  
-                  <Button asChild className="rounded-none font-display tracking-wider flex-1 md:flex-none" onClick={() => storage.setCurrentProjectId(project.id)}>
-                    <Link href="/story">
-                      Open Project <ArrowRight className="w-4 h-4 ml-2" />
-                    </Link>
-                  </Button>
+                <div className="flex gap-1">
+                  <button
+                    type="button"
+                    onClick={() => open(p)}
+                    className="px-3 py-1.5 rounded-md border border-border font-mono text-[10px] uppercase tracking-widest hover:border-primary hover:text-primary transition-colors"
+                    data-testid={`button-open-${p.id}`}
+                  >
+                    Open
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => duplicate(p)}
+                    title="Duplicate"
+                    className="p-1.5 rounded-md border border-border hover:border-primary hover:text-primary transition-colors"
+                    data-testid={`button-duplicate-${p.id}`}
+                  >
+                    <CopyIcon className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmDelete(p.id)}
+                    title="Delete"
+                    className="p-1.5 rounded-md border border-border hover:border-[#FF4444] hover:text-[#FF4444] transition-colors"
+                    data-testid={`button-delete-${p.id}`}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
                 </div>
-              </CardContent>
-            </Card>
-          ))}
+              </div>
+            ))}
+            {visible.length === 0 && (
+              <div className="p-6 text-center text-xs text-muted-foreground">
+                No projects match the current filters.
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      {confirmDelete && (
+        <div
+          className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-4"
+          data-testid="confirm-delete-modal"
+        >
+          <div className="border border-border bg-card rounded-md p-6 max-w-md w-full">
+            <div className="font-display text-2xl tracking-tight">
+              Delete this project?
+            </div>
+            <p className="mt-2 text-sm text-muted-foreground">
+              This is permanent. The project, story, prompts, music, and
+              voiceover will all be removed from this browser.
+            </p>
+            <div className="mt-5 flex gap-2 justify-end">
+              <button
+                type="button"
+                onClick={() => setConfirmDelete(null)}
+                className="px-4 py-2 rounded-md border border-border font-mono text-xs uppercase tracking-widest hover:border-foreground"
+                data-testid="button-cancel-delete"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => remove(confirmDelete)}
+                className="px-4 py-2 rounded-md bg-[#FF4444] text-white font-mono text-xs uppercase tracking-widest hover:bg-[#FF6666]"
+                data-testid="button-confirm-delete"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

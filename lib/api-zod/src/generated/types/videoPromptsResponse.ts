@@ -5,8 +5,16 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { VideoPrompt } from "./videoPrompt";
+import type { VideoDensityBlock } from "./videoDensityBlock";
+import type { VideoEffectInventoryItem } from "./videoEffectInventoryItem";
+import type { VideoEnergyArc } from "./videoEnergyArc";
+import type { VideoShot } from "./videoShot";
 
 export interface VideoPromptsResponse {
-  prompts: VideoPrompt[];
+  shots: VideoShot[];
+  effectsInventory: VideoEffectInventoryItem[];
+  densityMap: VideoDensityBlock[];
+  energyArc: VideoEnergyArc;
+  lastFrameDescription: string;
+  copyablePrompt: string;
 }

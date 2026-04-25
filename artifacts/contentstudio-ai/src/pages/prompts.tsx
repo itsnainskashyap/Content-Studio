@@ -1,318 +1,533 @@
-import { useState, useEffect } from "react";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import * as z from "zod";
-import { useGenerateVideoPrompts } from "@workspace/api-client-react";
-import { storage, Project } from "@/lib/storage";
-import { StoryBeat, VideoPrompt } from "@workspace/api-client-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, Save, Copy, Check, Video as VideoIcon } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  Loader2,
+  Sparkles,
+  Download,
+  ArrowDownToLine,
+  Check,
+  Play,
+  Star,
+} from "lucide-react";
 import { toast } from "sonner";
-import { useLocation } from "wouter";
+import type {
+  VideoPromptsRequest,
+  VideoPromptsResponse,
+} from "@workspace/api-client-react";
+import {
+  storage,
+  STYLES,
+  type Project,
+  type ProjectPart,
+} from "@/lib/storage";
+import { useApiCall, postJson } from "@/lib/api-call";
+import { ErrorCard } from "@/components/error-card";
+import { CopyButton } from "@/components/copy-button";
 
-const formSchema = z.object({
-  projectId: z.string().optional(),
-  aspectRatio: z.string().default("16:9"),
-  resolution: z.string().default("1080p"),
-  defaultDuration: z.coerce.number().default(5),
-  styleNotes: z.string().optional(),
-});
+const generateVideoPromptsFn = postJson<VideoPromptsRequest, VideoPromptsResponse>(
+  "/generate-video-prompts",
+);
 
-export default function PromptsGenerator() {
-  const [, setLocation] = useLocation();
-  const generatePrompts = useGenerateVideoPrompts();
-  
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [selectedProject, setSelectedProject] = useState<Project | null>(null);
-  const [prompts, setPrompts] = useState<VideoPrompt[]>([]);
-  const [copiedId, setCopiedId] = useState<string | null>(null);
+const PART_DURATIONS = [5, 10, 15, 20];
 
-  const form = useForm<z.infer<typeof formSchema>>({
-    resolver: zodResolver(formSchema),
-    defaultValues: {
-      projectId: "none",
-      aspectRatio: "16:9",
-      resolution: "1080p",
-      defaultDuration: 5,
-      styleNotes: "",
-    },
-  });
+export default function PromptGenerator() {
+  const [project, setProject] = useState<Project | null>(null);
+  const [style, setStyle] = useState<string | null>(null);
+  const [partDuration, setPartDuration] = useState(5);
+  const [generating, setGenerating] = useState(false);
+  const [parts, setParts] = useState<ProjectPart[]>([]);
+  const [progress, setProgress] = useState<{ current: number; total: number } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const partCall = useApiCall(generateVideoPromptsFn);
 
   useEffect(() => {
-    const allProjects = storage.getProjects();
-    const withStory = allProjects.filter(p => p.story && p.story.beats.length > 0);
-    setProjects(withStory);
-    
-    const settings = storage.getSettings();
-    form.setValue("aspectRatio", settings.defaultAspectRatio);
-    form.setValue("defaultDuration", settings.defaultDuration);
-
-    const currentId = storage.getCurrentProjectId();
-    if (currentId && withStory.find(p => p.id === currentId)) {
-      form.setValue("projectId", currentId);
-      setSelectedProject(withStory.find(p => p.id === currentId)!);
+    const current = storage.getCurrentProject();
+    if (current) {
+      setProject(current);
+      if (current.style) setStyle(current.style);
+      if (current.duration) setPartDuration(current.duration);
+      if (current.parts.length > 0) setParts(current.parts);
     }
-  }, [form]);
+  }, []);
 
-  const watchedProjectId = form.watch("projectId");
-  useEffect(() => {
-    if (watchedProjectId && watchedProjectId !== "none") {
-      const proj = projects.find(p => p.id === watchedProjectId);
-      if (proj) setSelectedProject(proj);
-    } else {
-      setSelectedProject(null);
-    }
-  }, [watchedProjectId, projects]);
+  const totalParts = useMemo(() => {
+    if (!project) return 0;
+    return Math.max(1, Math.ceil(project.totalDuration / partDuration));
+  }, [project, partDuration]);
 
-  async function onSubmit(values: z.infer<typeof formSchema>) {
-    if (!selectedProject || !selectedProject.story) {
-      toast.error("Please select a project with a story");
+  const startGeneration = async () => {
+    if (!project || !project.story || !style) {
+      toast.error("Pick a story, save it, and choose a style first");
       return;
     }
+    setGenerating(true);
+    setError(null);
+    setParts([]);
 
-    try {
-      const result = await generatePrompts.mutateAsync({
-        data: {
-          title: selectedProject.story.title,
-          logline: selectedProject.story.logline,
-          genre: selectedProject.story.genre,
-          tone: selectedProject.story.tone,
-          beats: selectedProject.story.beats,
-          aspectRatio: values.aspectRatio,
-          resolution: values.resolution,
-          defaultDuration: values.defaultDuration,
-          styleNotes: values.styleNotes,
-        }
+    let previousLastFrame: string | undefined = undefined;
+    const collected: ProjectPart[] = [];
+
+    for (let i = 1; i <= totalParts; i++) {
+      setProgress({ current: i, total: totalParts });
+      const result = await partCall.run({
+        story: project.story,
+        style,
+        duration: partDuration,
+        part: i,
+        totalParts,
+        previousLastFrame,
       });
-      setPrompts(result.prompts);
-      toast.success("Prompts generated successfully");
-    } catch (error: any) {
-      toast.error(error.message || "Failed to generate prompts");
+      if (!result) {
+        setError(partCall.error ?? "Generation failed");
+        setGenerating(false);
+        setProgress(null);
+        return;
+      }
+      const part: ProjectPart = { ...result, partNumber: i };
+      collected.push(part);
+      setParts([...collected]);
+      previousLastFrame = result.lastFrameDescription;
     }
-  }
 
-  function saveToProject() {
-    if (!selectedProject || prompts.length === 0) return;
-    const updatedProject = { ...selectedProject, prompts };
-    storage.saveProject(updatedProject);
-    setSelectedProject(updatedProject);
-    toast.success("Saved prompts to project");
-  }
+    // Persist
+    const updated: Project = {
+      ...project,
+      style,
+      duration: partDuration,
+      parts: collected,
+    };
+    const saved = storage.saveProject(updated);
+    storage.setCurrentProjectId(saved.id);
+    setProject(saved);
+    window.dispatchEvent(new Event("cs:projects-changed"));
+    setGenerating(false);
+    setProgress(null);
+    toast.success(`Generated ${collected.length} part${collected.length === 1 ? "" : "s"}`);
+  };
 
-  function copyPrompt(promptText: string, id: string) {
-    navigator.clipboard.writeText(promptText);
-    setCopiedId(id);
-    setTimeout(() => setCopiedId(null), 2000);
-    toast.success("Copied to clipboard");
-  }
+  const downloadAll = () => {
+    if (!project || parts.length === 0) return;
+    const lines: string[] = [];
+    lines.push(`# ${project.title}`);
+    if (project.story) {
+      lines.push(``);
+      lines.push(`## Story`);
+      lines.push(project.story.synopsis);
+    }
+    lines.push(``);
+    lines.push(`Style: ${project.style ?? style ?? "—"}`);
+    lines.push(`Per-part duration: ${partDuration}s`);
+    lines.push(`Total parts: ${parts.length}`);
+    parts.forEach((p) => {
+      lines.push(``);
+      lines.push(`---`);
+      lines.push(`# PART ${p.partNumber}`);
+      lines.push(``);
+      lines.push(p.copyablePrompt);
+      lines.push(``);
+      lines.push(`Last frame: ${p.lastFrameDescription}`);
+    });
+    const blob = new Blob([lines.join("\n")], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${project.title.replace(/\s+/g, "_")}-prompts.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
 
-  function copyAll() {
-    const text = prompts.map(p => `[${p.beatTitle}]\n${p.prompt}`).join('\n\n');
-    navigator.clipboard.writeText(text);
-    toast.success("Copied all to clipboard");
-  }
-
-  return (
-    <div className="space-y-6 animate-in fade-in duration-500">
-      <div>
-        <h1 className="text-4xl font-display mb-2">Video Prompts</h1>
-        <p className="text-muted-foreground">Generate Seedance 2.0 prompts from your story beats.</p>
+  // No project / story state
+  if (!project || !project.story) {
+    return (
+      <div className="px-6 py-10 md:px-12 md:py-14 max-w-3xl mx-auto">
+        <h1 className="font-display text-4xl md:text-5xl tracking-tight">
+          Video Prompts
+        </h1>
+        <p className="mt-3 text-muted-foreground">
+          You need a saved story before generating shot prompts.
+        </p>
+        <a
+          href={`${import.meta.env.BASE_URL}story`}
+          className="mt-6 inline-flex items-center gap-2 px-5 py-3 rounded-md bg-primary text-black font-mono text-xs uppercase tracking-widest hover:bg-[#D4EB3A] transition-colors"
+          data-testid="button-go-story"
+        >
+          Go to Story Builder
+        </a>
       </div>
+    );
+  }
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        <div className="lg:col-span-4 space-y-6">
-          <Card className="bg-card border-border rounded-none">
-            <CardHeader className="border-b border-border pb-4 mb-4">
-              <CardTitle className="font-display text-xl">Configuration</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Form {...form}>
-                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                  <FormField
-                    control={form.control}
-                    name="projectId"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="font-mono text-xs uppercase text-muted-foreground">Source Project</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
-                          <FormControl>
-                            <SelectTrigger className="rounded-none border-border">
-                              <SelectValue placeholder="Select a project" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent className="rounded-none">
-                            <SelectItem value="none">Select project...</SelectItem>
-                            {projects.map(p => (
-                              <SelectItem key={p.id} value={p.id}>{p.title}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <FormField
-                      control={form.control}
-                      name="aspectRatio"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="font-mono text-xs uppercase text-muted-foreground">Aspect Ratio</FormLabel>
-                          <Select onValueChange={field.onChange} defaultValue={field.value}>
-                            <FormControl>
-                              <SelectTrigger className="rounded-none border-border">
-                                <SelectValue placeholder="Ratio" />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent className="rounded-none">
-                              <SelectItem value="16:9">16:9 (Landscape)</SelectItem>
-                              <SelectItem value="9:16">9:16 (Portrait)</SelectItem>
-                              <SelectItem value="1:1">1:1 (Square)</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name="resolution"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="font-mono text-xs uppercase text-muted-foreground">Resolution</FormLabel>
-                          <Select onValueChange={field.onChange} defaultValue={field.value}>
-                            <FormControl>
-                              <SelectTrigger className="rounded-none border-border">
-                                <SelectValue placeholder="Res" />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent className="rounded-none">
-                              <SelectItem value="720p">720p</SelectItem>
-                              <SelectItem value="1080p">1080p</SelectItem>
-                              <SelectItem value="4k">4k</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
-
-                  <FormField
-                    control={form.control}
-                    name="styleNotes"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="font-mono text-xs uppercase text-muted-foreground">Style Notes (Optional)</FormLabel>
-                        <FormControl>
-                          <Textarea 
-                            placeholder="e.g. moody lighting, 35mm lens, film grain..." 
-                            className="resize-none h-20 rounded-none border-border focus-visible:ring-primary font-mono text-sm"
-                            {...field} 
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  
-                  <Button 
-                    type="submit" 
-                    className="w-full rounded-none font-display text-lg tracking-wider bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
-                    disabled={generatePrompts.isPending || !selectedProject}
-                  >
-                    {generatePrompts.isPending ? (
-                      <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Generating...</>
-                    ) : "Generate Prompts"}
-                  </Button>
-                </form>
-              </Form>
-            </CardContent>
-          </Card>
+  // Style selection state
+  if (!style && parts.length === 0) {
+    return (
+      <div className="px-6 py-10 md:px-12 md:py-14 max-w-6xl mx-auto">
+        <div className="text-xs font-mono uppercase tracking-widest text-muted-foreground">
+          Step 1 of 2 · Pick a style
         </div>
-
-        <div className="lg:col-span-8">
-          {prompts.length > 0 ? (
-            <div className="space-y-6">
-              <div className="flex items-center justify-between border border-border p-4 bg-card">
-                <div>
-                  <h2 className="text-xl font-display">Seedance 2.0 Prompts</h2>
-                  <p className="text-sm text-muted-foreground font-mono mt-1">Generated from: {selectedProject?.title}</p>
-                </div>
-                <div className="flex gap-2 shrink-0">
-                  <Button variant="outline" onClick={copyAll} className="rounded-none border-border hover:text-primary hover:border-primary font-mono text-xs">
-                    <Copy className="w-4 h-4 mr-2" /> Copy All
-                  </Button>
-                  <Button onClick={saveToProject} className="rounded-none font-display tracking-wide flex items-center gap-2">
-                    <Save className="w-4 h-4" /> Save
-                  </Button>
-                </div>
+        <h1 className="mt-1 font-display text-4xl md:text-5xl tracking-tight">
+          Video Prompts
+        </h1>
+        <p className="mt-3 text-muted-foreground max-w-2xl">
+          Choose the visual world. The prompts will be tailored to it shot by
+          shot.
+        </p>
+        <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {STYLES.map((s) => (
+            <button
+              key={s.key}
+              type="button"
+              onClick={() => setStyle(s.name)}
+              className="text-left border border-border rounded-md p-4 bg-card hover:border-primary transition-colors group"
+              data-testid={`style-${s.key}`}
+              style={{ borderTopColor: s.accent, borderTopWidth: 3 }}
+            >
+              <div className="font-display text-2xl tracking-tight group-hover:text-primary">
+                {s.name}
               </div>
-
-              <div className="space-y-4">
-                {prompts.map((prompt, index) => (
-                  <div key={prompt.beatId || index} className="border border-border bg-card flex flex-col group">
-                    <div className="bg-secondary px-4 py-2 border-b border-border flex items-center justify-between">
-                      <span className="font-display text-lg tracking-wide">{prompt.beatTitle}</span>
-                      <div className="flex items-center gap-3 font-mono text-[10px] text-muted-foreground uppercase">
-                        <span>{prompt.durationSeconds}s</span>
-                        <span>•</span>
-                        <span>{prompt.aspectRatio}</span>
-                        <span>•</span>
-                        <span>{prompt.resolution}</span>
-                      </div>
-                    </div>
-                    <div className="p-4 flex-1 space-y-4">
-                      <div className="relative">
-                        <Textarea 
-                          readOnly
-                          value={prompt.prompt}
-                          className="font-mono text-sm bg-background border-border focus-visible:ring-0 resize-none min-h-[100px] rounded-none pr-12 text-primary"
-                        />
-                        <Button 
-                          variant="ghost" 
-                          size="icon" 
-                          className="absolute top-2 right-2 h-8 w-8 rounded-none hover:bg-secondary hover:text-primary"
-                          onClick={() => copyPrompt(prompt.prompt, prompt.beatId)}
-                        >
-                          {copiedId === prompt.beatId ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                        </Button>
-                      </div>
-                      
-                      <div className="grid grid-cols-3 gap-2 text-xs font-mono">
-                        <div className="border border-border p-2 bg-background/50">
-                          <span className="text-muted-foreground block mb-1">CAMERA</span>
-                          {prompt.cameraMovement}
-                        </div>
-                        <div className="border border-border p-2 bg-background/50">
-                          <span className="text-muted-foreground block mb-1">LIGHTING</span>
-                          {prompt.lighting}
-                        </div>
-                        <div className="border border-border p-2 bg-background/50">
-                          <span className="text-muted-foreground block mb-1">MOOD</span>
-                          {prompt.mood}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+              <div className="mt-2 text-xs text-muted-foreground">
+                {s.description}
               </div>
-            </div>
+              <div className="mt-3 text-[10px] font-mono uppercase tracking-widest text-muted-foreground/80">
+                {s.keywords}
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // Selected style → duration + generate
+  return (
+    <div className="px-6 py-10 md:px-12 md:py-14 max-w-6xl mx-auto">
+      <div className="text-xs font-mono uppercase tracking-widest text-muted-foreground">
+        Project · {project.title}
+      </div>
+      <h1 className="mt-1 font-display text-4xl md:text-5xl tracking-tight">
+        Video Prompts
+      </h1>
+
+      <div className="mt-6 border border-border rounded-md p-5 bg-card flex flex-wrap gap-6 items-end">
+        <div>
+          <div className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
+            Style
+          </div>
+          <div className="mt-1 font-display text-2xl tracking-tight">
+            {style}
+          </div>
+          {parts.length === 0 && (
+            <button
+              type="button"
+              onClick={() => setStyle(null)}
+              className="mt-1 text-[10px] font-mono uppercase tracking-widest text-muted-foreground hover:text-primary"
+              data-testid="button-change-style"
+            >
+              Change style
+            </button>
+          )}
+        </div>
+        <div>
+          <div className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
+            Duration / part
+          </div>
+          <div className="mt-2 flex gap-2">
+            {PART_DURATIONS.map((d) => (
+              <button
+                key={d}
+                type="button"
+                onClick={() => setPartDuration(d)}
+                disabled={generating || parts.length > 0}
+                className={`px-3 py-1.5 rounded-md text-xs font-mono uppercase tracking-widest border transition-colors ${
+                  partDuration === d
+                    ? "bg-primary text-black border-primary"
+                    : "border-border text-muted-foreground hover:text-foreground"
+                } ${generating || parts.length > 0 ? "opacity-50 cursor-not-allowed" : ""}`}
+                data-testid={`pill-pdur-${d}`}
+              >
+                {d}s
+              </button>
+            ))}
+          </div>
+        </div>
+        <div>
+          <div className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
+            Total
+          </div>
+          <div className="mt-1 font-mono text-sm">
+            {totalParts} × {partDuration}s = {totalParts * partDuration}s
+          </div>
+        </div>
+        <div className="ml-auto flex gap-2">
+          {parts.length === 0 ? (
+            <button
+              type="button"
+              onClick={startGeneration}
+              disabled={generating}
+              className="inline-flex items-center gap-2 px-5 py-3 rounded-md bg-primary text-black font-mono text-xs uppercase tracking-widest hover:bg-[#D4EB3A] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              data-testid="button-generate-prompts"
+            >
+              {generating ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" /> Generating…
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-4 h-4" /> Generate prompts
+                </>
+              )}
+            </button>
           ) : (
-            <div className="h-full min-h-[400px] border border-dashed border-border bg-card/30 flex flex-col items-center justify-center text-muted-foreground p-8 text-center">
-              <VideoIcon className="w-12 h-12 mb-4 opacity-20" />
-              <h3 className="font-display text-2xl mb-2 text-foreground/50">No Prompts Yet</h3>
-              <p className="max-w-md">Select a project with a story and generate high-quality video prompts.</p>
-            </div>
+            <>
+              <button
+                type="button"
+                onClick={downloadAll}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-md border border-border font-mono text-xs uppercase tracking-widest hover:border-primary hover:text-primary transition-colors"
+                data-testid="button-download-all"
+              >
+                <Download className="w-4 h-4" /> Download .txt
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setParts([]);
+                  setStyle(null);
+                  toast("Reset — pick a style and generate again");
+                }}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-md border border-border font-mono text-xs uppercase tracking-widest hover:border-primary hover:text-primary transition-colors"
+                data-testid="button-reset"
+              >
+                Start over
+              </button>
+            </>
           )}
         </div>
       </div>
+
+      {progress && (
+        <div className="mt-6">
+          <div className="text-xs font-mono uppercase tracking-widest text-muted-foreground">
+            Generating part {progress.current} of {progress.total}…
+          </div>
+          <div className="mt-2 h-1 bg-secondary/40 rounded">
+            <div
+              className="h-1 bg-primary rounded transition-all"
+              style={{
+                width: `${(progress.current / progress.total) * 100}%`,
+              }}
+            />
+          </div>
+        </div>
+      )}
+
+      {error && (
+        <div className="mt-6">
+          <ErrorCard message={error} onRetry={startGeneration} />
+        </div>
+      )}
+
+      {parts.length > 0 && (
+        <div className="mt-10 space-y-8">
+          {parts.map((p, idx) => (
+            <PartCard key={p.partNumber} part={p} continuesFrom={idx > 0} />
+          ))}
+
+          <div className="border border-primary/40 bg-primary/5 rounded-md p-5">
+            <div className="text-[10px] font-mono uppercase tracking-widest text-primary">
+              Complete prompt package
+            </div>
+            <div className="mt-1 font-display text-2xl tracking-tight">
+              {parts.length} part{parts.length === 1 ? "" : "s"} ·{" "}
+              {parts.reduce((s, p) => s + p.shots.length, 0)} shots
+            </div>
+            <div className="mt-3 flex gap-2">
+              <button
+                type="button"
+                onClick={downloadAll}
+                className="inline-flex items-center gap-2 px-5 py-3 rounded-md bg-primary text-black font-mono text-xs uppercase tracking-widest hover:bg-[#D4EB3A] transition-colors"
+                data-testid="button-download-package"
+              >
+                <ArrowDownToLine className="w-4 h-4" /> Download all prompts
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PartCard({
+  part,
+  continuesFrom,
+}: {
+  part: ProjectPart;
+  continuesFrom: boolean;
+}) {
+  const [expandedShot, setExpandedShot] = useState<number | null>(null);
+
+  return (
+    <div
+      className="border border-border rounded-md bg-card"
+      data-testid={`part-${part.partNumber}`}
+    >
+      <div className="flex items-center justify-between p-5 border-b border-border">
+        <div>
+          <div className="text-[10px] font-mono uppercase tracking-widest text-primary">
+            Part {part.partNumber}
+          </div>
+          <div className="mt-1 font-display text-2xl tracking-tight">
+            {part.shots.length} shots
+          </div>
+          {continuesFrom && (
+            <div className="mt-1 text-[11px] font-mono text-muted-foreground">
+              ↳ Continues from Part {part.partNumber - 1}
+            </div>
+          )}
+        </div>
+        <CopyButton
+          text={part.copyablePrompt}
+          label="Copy prompt"
+          variant="accent"
+          testId={`button-copy-part-${part.partNumber}`}
+        />
+      </div>
+
+      <div className="p-5 space-y-3">
+        <div>
+          <div className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-2">
+            Density Map
+          </div>
+          <div className="flex gap-1 h-3">
+            {part.densityMap.map((d, i) => (
+              <div
+                key={i}
+                title={`${d.timeRange} · ${d.density} · ${d.effects.join(", ")}`}
+                className="flex-1 rounded-sm"
+                style={{
+                  background:
+                    d.density === "HIGH"
+                      ? "#FF4444"
+                      : d.density === "MEDIUM"
+                        ? "#E8FF47"
+                        : "#4ADE80",
+                }}
+              />
+            ))}
+          </div>
+          <div className="flex justify-between mt-1 text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
+            <span>{part.densityMap[0]?.timeRange ?? ""}</span>
+            <span>{part.densityMap[part.densityMap.length - 1]?.timeRange ?? ""}</span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-4">
+          {(["act1", "act2", "act3"] as const).map((k) => (
+            <div
+              key={k}
+              className="border border-border rounded-md p-3 bg-background"
+            >
+              <div className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
+                {k.toUpperCase()}
+              </div>
+              <p className="mt-1 text-xs">{part.energyArc[k]}</p>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-6">
+          <div className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-2">
+            Shots
+          </div>
+          <ul className="space-y-2">
+            {part.shots.map((s) => (
+              <li
+                key={s.shotNumber}
+                className="border border-border rounded-md bg-background"
+              >
+                <button
+                  type="button"
+                  onClick={() =>
+                    setExpandedShot((cur) =>
+                      cur === s.shotNumber ? null : s.shotNumber,
+                    )
+                  }
+                  className="w-full flex items-center justify-between gap-3 p-3 text-left"
+                  data-testid={`shot-${part.partNumber}-${s.shotNumber}`}
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span className="font-mono text-[10px] text-muted-foreground uppercase tracking-widest">
+                      #{s.shotNumber}
+                    </span>
+                    <span className="font-mono text-[10px] text-muted-foreground">
+                      {s.timestamp}
+                    </span>
+                    <span className="font-display text-base tracking-tight truncate">
+                      {s.name}
+                    </span>
+                    {s.isSignature && (
+                      <span className="ml-2 inline-flex items-center gap-1 text-[10px] font-mono uppercase tracking-widest text-black bg-primary px-1.5 py-0.5 rounded">
+                        <Star className="w-3 h-3" /> Signature
+                      </span>
+                    )}
+                  </div>
+                  <Play
+                    className={`w-4 h-4 text-muted-foreground transition-transform ${
+                      expandedShot === s.shotNumber ? "rotate-90" : ""
+                    }`}
+                  />
+                </button>
+                {expandedShot === s.shotNumber && (
+                  <div className="px-3 pb-3 pt-0 space-y-2">
+                    <p className="text-xs">{s.description}</p>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-[11px]">
+                      <Field label="Camera" value={s.cameraWork} />
+                      <Field label="Speed" value={s.speed} />
+                      <Field label="Transition" value={s.transition} />
+                    </div>
+                    <div>
+                      <div className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-1">
+                        Effects
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {s.effects.map((e, i) => (
+                          <span
+                            key={i}
+                            className="text-[10px] font-mono px-1.5 py-0.5 rounded border border-border"
+                          >
+                            {e}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div className="mt-6 border-t border-border pt-4">
+          <div className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-2 flex items-center gap-1">
+            <Check className="w-3 h-3" /> Last frame (continuation)
+          </div>
+          <p className="text-xs text-muted-foreground italic">
+            {part.lastFrameDescription}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Field({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="border border-border rounded-md p-2">
+      <div className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
+        {label}
+      </div>
+      <div className="text-xs">{value}</div>
     </div>
   );
 }

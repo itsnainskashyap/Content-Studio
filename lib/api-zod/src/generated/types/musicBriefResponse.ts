@@ -5,21 +5,20 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { MusicBriefResponseStructureItem } from "./musicBriefResponseStructureItem";
+import type { MusicPartDirection } from "./musicPartDirection";
 
 export interface MusicBriefResponse {
-  title: string;
-  styleTags: string[];
-  bpm: number;
-  key: string;
+  genre: string;
+  subGenre: string;
+  tempo: string;
+  /** low | medium | high | explosive */
+  energy: string;
+  instruments: string[];
   mood: string;
-  instrumentation: string[];
-  structure: MusicBriefResponseStructureItem[];
-  /** Suno-formatted prompt with bracketed sections */
+  vocalStyle?: string | null;
+  referenceArtists: string[];
   sunoPrompt: string;
-  /** Udio-formatted prompt */
   udioPrompt: string;
-  /** Lyrics if vocal track, empty string if instrumental */
-  lyrics: string;
-  notes: string;
+  timingNotes: string;
+  partBreakdown: MusicPartDirection[];
 }

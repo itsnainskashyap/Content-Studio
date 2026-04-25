@@ -5,19 +5,15 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { StoryBeat } from "./storyBeat";
+import type { StoryResponse } from "./storyResponse";
 
 export interface VideoPromptsRequest {
-  title: string;
-  logline?: string;
-  genre?: string;
-  tone?: string;
-  beats: StoryBeat[];
-  /** e.g. "16:9", "9:16", "1:1" */
-  aspectRatio?: string;
-  /** e.g. "720p", "1080p", "4k" */
-  resolution?: string;
-  /** Default per-shot duration in seconds (5 or 10) */
-  defaultDuration?: number;
-  styleNotes?: string;
+  story: StoryResponse;
+  style: string;
+  /** Duration of this single part in seconds */
+  duration: number;
+  part: number;
+  totalParts: number;
+  /** lastFrameDescription from the previous part for continuation */
+  previousLastFrame?: string;
 }

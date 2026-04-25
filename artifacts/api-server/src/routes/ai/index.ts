@@ -25,30 +25,56 @@ const router: IRouter = Router();
 
 function handleError(res: Response, label: string, err: unknown) {
   logger.error({ err, label }, "AI route error");
-  const message =
-    err instanceof Error ? err.message : "Unknown server error";
+  const message = err instanceof Error ? err.message : "Unknown server error";
   res.status(500).json({ error: message });
 }
 
+function describeStory(story: {
+  title: string;
+  synopsis: string;
+  acts: Array<{
+    actNumber: number;
+    title: string;
+    description: string;
+    keyMoment: string;
+  }>;
+  characters: Array<{ name: string; description: string }>;
+  mood: string;
+  colorPalette: string[];
+  musicSuggestion: string;
+}): string {
+  return `Title: ${story.title}
+Synopsis: ${story.synopsis}
+Mood: ${story.mood}
+Color palette: ${story.colorPalette.join(", ")}
+Music suggestion: ${story.musicSuggestion}
+
+Characters:
+${story.characters.map((c) => `- ${c.name}: ${c.description}`).join("\n")}
+
+Acts:
+${story.acts
+  .map(
+    (a) =>
+      `Act ${a.actNumber} — ${a.title}\n  Description: ${a.description}\n  Key moment: ${a.keyMoment}`,
+  )
+  .join("\n")}`;
+}
+
 router.post("/generate-story", async (req: Request, res: Response) => {
-  const parseResult = GenerateStoryBody.safeParse(req.body);
-  if (!parseResult.success) {
-    res.status(400).json({ error: parseResult.error.message });
+  const parsed = GenerateStoryBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
     return;
   }
-  const body = parseResult.data;
-
-  const beatCount = body.beatCount ?? 6;
-  const targetDuration = body.targetDuration ?? 30;
+  const { brief, genre, duration } = parsed.data;
   const userPrompt = `Create a structured cinematic story from the following brief.
 
-CONCEPT:
-${body.concept}
+BRIEF:
+${brief}
 
-GENRE: ${body.genre ?? "(creator's choice — pick a fitting genre)"}
-TONE: ${body.tone ?? "(creator's choice — pick a fitting tone)"}
-TARGET TOTAL DURATION: ${targetDuration} seconds
-NUMBER OF BEATS: ${beatCount}
+GENRE: ${genre}
+TOTAL DURATION: ${duration} seconds
 
 Output the structured story as JSON.`;
 
@@ -66,29 +92,21 @@ Output the structured story as JSON.`;
 });
 
 router.post("/continue-story", async (req: Request, res: Response) => {
-  const parseResult = ContinueStoryBody.safeParse(req.body);
-  if (!parseResult.success) {
-    res.status(400).json({ error: parseResult.error.message });
+  const parsed = ContinueStoryBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
     return;
   }
-  const body = parseResult.data;
-
-  const additional = body.additionalBeats ?? 4;
-  const userPrompt = `Continue the following cinematic story by adding ${additional} new beats. Return the FULL story including all existing beats plus the new ones.
+  const { existingStory, direction } = parsed.data;
+  const userPrompt = `Continue the following story by adding 1-3 new acts in the requested direction. Return the FULL story including the original acts plus the new ones, with sequential actNumber values.
 
 EXISTING STORY:
-Title: ${body.title}
-Logline: ${body.logline ?? "(not provided)"}
-Genre: ${body.genre ?? "(not provided)"}
-Tone: ${body.tone ?? "(not provided)"}
+${describeStory(existingStory)}
 
-EXISTING BEATS (in order):
-${body.existingBeats.map((b) => `${b.order}. [${b.id}] ${b.title} (${b.duration}s) — ${b.description}`).join("\n")}
+DIRECTION FOR CONTINUATION:
+${direction}
 
-GUIDANCE FOR CONTINUATION:
-${body.guidance ?? "(no specific guidance — extend the story naturally toward a satisfying close)"}
-
-Output the full extended story as JSON, with continuous order numbers.`;
+Output the full extended story as JSON.`;
 
   try {
     const result = await generateJson({
@@ -106,33 +124,26 @@ Output the full extended story as JSON, with continuous order numbers.`;
 router.post(
   "/generate-video-prompts",
   async (req: Request, res: Response) => {
-    const parseResult = GenerateVideoPromptsBody.safeParse(req.body);
-    if (!parseResult.success) {
-      res.status(400).json({ error: parseResult.error.message });
+    const parsed = GenerateVideoPromptsBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.message });
       return;
     }
-    const body = parseResult.data;
+    const { story, style, duration, part, totalParts, previousLastFrame } =
+      parsed.data;
 
-    const aspectRatio = body.aspectRatio ?? "16:9";
-    const resolution = body.resolution ?? "1080p";
-    const defaultDuration = body.defaultDuration ?? 5;
-    const userPrompt = `Generate Seedance 2.0 video prompts for the following story. Produce exactly ${body.beats.length} prompts — one per beat — in the same order.
+    const userPrompt = `Generate Seedance 2.0 video prompts for ONE part of a multi-part video.
 
-STORY TITLE: ${body.title}
-LOGLINE: ${body.logline ?? "(not provided)"}
-GENRE: ${body.genre ?? "(not provided)"}
-TONE: ${body.tone ?? "(not provided)"}
+STORY (full context for all parts):
+${describeStory(story)}
 
-GLOBAL SETTINGS:
-- Aspect ratio: ${aspectRatio}
-- Resolution: ${resolution}
-- Default per-shot duration: ${defaultDuration} seconds (use this unless a beat's own duration suggests otherwise)
-- Style notes: ${body.styleNotes ?? "(none — use a clean live-action cinematic look)"}
+THIS PART:
+- Part number: ${part} of ${totalParts}
+- Duration of this part: ${duration} seconds (build shots whose timestamps sum to roughly this duration)
+- Style: ${style}
+${previousLastFrame ? `- Previous part ended on this frame (the FIRST shot of this part must continue from it):\n  ${previousLastFrame}` : "- This is the FIRST part — no previous frame to continue from."}
 
-BEATS:
-${body.beats.map((b) => `${b.order}. [${b.id}] ${b.title} (${b.duration}s) — ${b.description}`).join("\n")}
-
-Output JSON with the prompts array. Each prompt's beatId and beatTitle must match the corresponding input beat exactly.`;
+Output the JSON described in the system prompt.`;
 
     try {
       const result = await generateJson({
@@ -149,30 +160,29 @@ Output JSON with the prompts array. Each prompt's beatId and beatTitle must matc
 );
 
 router.post("/generate-music-brief", async (req: Request, res: Response) => {
-  const parseResult = GenerateMusicBriefBody.safeParse(req.body);
-  if (!parseResult.success) {
-    res.status(400).json({ error: parseResult.error.message });
+  const parsed = GenerateMusicBriefBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
     return;
   }
-  const body = parseResult.data;
+  const { story, style, mood, duration, language, energyLevel, tempo, totalParts } =
+    parsed.data;
 
-  const duration = body.durationSeconds ?? 60;
-  const vocal = body.vocal ?? false;
-  const userPrompt = `Create a detailed music brief for AI music generators (Suno, Udio).
+  const userPrompt = `Create a music brief that scores the following video.
 
-CONCEPT:
-${body.concept}
+STORY:
+${describeStory(story)}
 
-GENRE: ${body.genre ?? "(creator's choice)"}
-MOOD: ${body.mood ?? "(creator's choice)"}
-DURATION: ${duration} seconds
-VOCAL: ${vocal ? "Yes — include actual lyrics" : "No — instrumental"}
-REFERENCE ARTISTS: ${body.referenceArtists ?? "(none specified — pick 2 fitting reference artists in your output if relevant)"}
+VIDEO SETTINGS:
+- Visual style: ${style}
+- Override mood (creator-specified): ${mood}
+- Total duration: ${duration} seconds
+- Language / cultural context: ${language}
+- Energy level (1=calm, 10=explosive): ${energyLevel ?? "(not specified — pick a fitting energy)"}
+- Tempo bucket: ${tempo ?? "(not specified — pick a fitting tempo)"}
+- Total video parts: ${totalParts ?? 1} (provide one partBreakdown entry per part)
 
-STORY CONTEXT (for sync — may be empty):
-${body.storyContext ?? "(no story context — write a standalone music brief based on the concept)"}
-
-Output the music brief as JSON.`;
+Output the music brief as JSON. The sunoPrompt MUST follow Suno's bracketed tag format.`;
 
   try {
     const result = await generateJson({
@@ -188,34 +198,26 @@ Output the music brief as JSON.`;
 });
 
 router.post("/generate-voiceover", async (req: Request, res: Response) => {
-  const parseResult = GenerateVoiceoverBody.safeParse(req.body);
-  if (!parseResult.success) {
-    res.status(400).json({ error: parseResult.error.message });
+  const parsed = GenerateVoiceoverBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
     return;
   }
-  const body = parseResult.data;
+  const { story, style, language, tone, duration, part, pace } = parsed.data;
 
-  const beats = body.beats ?? [];
-  const wpm =
-    body.wordsPerMinute ??
-    (body.pacing === "slow" ? 120 : body.pacing === "fast" ? 180 : 150);
-  const userPrompt = `Write a voiceover script in ${body.language.toUpperCase()} for the following story. Produce exactly one VoiceoverLine per beat — in the same order — and a fullScript that concatenates them.
+  const userPrompt = `Write a voiceover script in ${language.toUpperCase()} for ONE part of the following video.
 
-STORY:
-Title: ${body.title ?? "(untitled)"}
-Logline: ${body.logline ?? "(not provided)"}
+STORY (full context):
+${describeStory(story)}
 
-BEATS:
-${beats.length > 0 ? beats.map((b) => `${b.order}. [${b.id}] ${b.title} (${b.duration}s) — ${b.description}`).join("\n") : "(no beats provided — write a single short voiceover line addressing the logline)"}
+THIS PART:
+- Part number: ${part}
+- Duration: ${duration} seconds
+- Visual style: ${style ?? "(not specified)"}
+- Tone: ${tone}
+- Pace: ${pace ?? "normal"}
 
-VOICEOVER SETTINGS:
-- Language: ${body.language}
-- Voice profile: ${body.voiceProfile ?? "(creator's choice — pick a fitting profile)"}
-- Pacing: ${body.pacing ?? "medium"}
-- Words per minute: ${wpm}
-- Style notes: ${body.styleNotes ?? "(none)"}
-
-Output the voiceover as JSON. Remember: if language is "hindi", write the text field in Devanagari script. If "hinglish", use natural code-switched Hindi-English with Hindi in Roman script.`;
+Output the voiceover as JSON. Remember: if language is "hindi", write the script and copyableScript in Devanagari. If "hinglish", use natural code-switched Hindi-English with Hindi in Roman script.`;
 
   try {
     const result = await generateJson({

@@ -18,7 +18,6 @@ paths:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -30,7 +29,7 @@ paths:
     post:
       operationId: generateStory
       tags: [ai]
-      summary: Generate a structured story from a concept
+      summary: Generate a structured story from a brief
       requestBody:
         required: true
         content:
@@ -60,7 +59,7 @@ paths:
     post:
       operationId: continueStory
       tags: [ai]
-      summary: Continue an existing story with new beats
+      summary: Continue an existing story with new acts
       requestBody:
         required: true
         content:
@@ -69,7 +68,7 @@ paths:
               $ref: "#/components/schemas/ContinueStoryRequest"
       responses:
         "200":
-          description: Continued story beats
+          description: Continued story
           content:
             application/json:
               schema:
@@ -90,7 +89,7 @@ paths:
     post:
       operationId: generateVideoPrompts
       tags: [ai]
-      summary: Generate Seedance 2.0 video prompts from story beats
+      summary: Generate Seedance 2.0 video prompts for one part of the video
       requestBody:
         required: true
         content:
@@ -99,7 +98,7 @@ paths:
               $ref: "#/components/schemas/VideoPromptsRequest"
       responses:
         "200":
-          description: Generated video prompts
+          description: Generated video part
           content:
             application/json:
               schema:
@@ -120,7 +119,7 @@ paths:
     post:
       operationId: generateMusicBrief
       tags: [ai]
-      summary: Generate a Suno/Udio music brief from a concept or story
+      summary: Generate a Suno/Udio music brief for the project
       requestBody:
         required: true
         content:
@@ -150,7 +149,7 @@ paths:
     post:
       operationId: generateVoiceover
       tags: [ai]
-      summary: Generate a voiceover script in English, Hindi, or Hinglish
+      summary: Generate a voiceover script in English, Hindi, or Hinglish for one video part
       requestBody:
         required: true
         content:
@@ -159,7 +158,7 @@ paths:
               $ref: "#/components/schemas/VoiceoverRequest"
       responses:
         "200":
-          description: Generated voiceover script
+          description: Generated voiceover
           content:
             application/json:
               schema:
@@ -192,297 +191,384 @@ components:
           type: string
       required:
         - error
-    StoryBeat:
+
+    StoryAct:
       type: object
       properties:
-        id:
-          type: string
+        actNumber:
+          type: integer
         title:
           type: string
         description:
           type: string
-        duration:
-          type: number
-          description: Beat duration in seconds
-        order:
-          type: integer
+        keyMoment:
+          type: string
       required:
-        - id
+        - actNumber
         - title
         - description
-        - duration
-        - order
+        - keyMoment
+    StoryCharacter:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+      required:
+        - name
+        - description
     StoryResponse:
       type: object
       properties:
         title:
           type: string
-        logline:
+        synopsis:
           type: string
-        genre:
-          type: string
-        tone:
-          type: string
-        beats:
+        acts:
           type: array
           items:
-            $ref: "#/components/schemas/StoryBeat"
+            $ref: "#/components/schemas/StoryAct"
+        characters:
+          type: array
+          items:
+            $ref: "#/components/schemas/StoryCharacter"
+        mood:
+          type: string
+        colorPalette:
+          type: array
+          items:
+            type: string
+          description: List of hex color strings, e.g. ["#1a1a1a", "#E8FF47"]
+        musicSuggestion:
+          type: string
       required:
         - title
-        - logline
-        - genre
-        - tone
-        - beats
+        - synopsis
+        - acts
+        - characters
+        - mood
+        - colorPalette
+        - musicSuggestion
     StoryRequest:
       type: object
       properties:
-        concept:
+        brief:
           type: string
         genre:
           type: string
-        tone:
-          type: string
-        targetDuration:
+        duration:
           type: number
-          description: Target total duration in seconds
-        beatCount:
-          type: integer
-          description: Number of beats to generate (e.g. 5-12)
+          description: Total target duration in seconds
       required:
-        - concept
+        - brief
+        - genre
+        - duration
     ContinueStoryRequest:
       type: object
       properties:
-        title:
-          type: string
-        logline:
-          type: string
-        genre:
-          type: string
-        tone:
-          type: string
-        existingBeats:
-          type: array
-          items:
-            $ref: "#/components/schemas/StoryBeat"
-        additionalBeats:
-          type: integer
-        guidance:
+        existingStory:
+          $ref: "#/components/schemas/StoryResponse"
+        direction:
           type: string
       required:
-        - title
-        - existingBeats
-    VideoPrompt:
+        - existingStory
+        - direction
+
+    VideoShot:
       type: object
       properties:
-        beatId:
+        shotNumber:
+          type: integer
+        timestamp:
           type: string
-        beatTitle:
+          description: e.g. "00:00-00:03"
+        name:
           type: string
-        prompt:
+        effects:
+          type: array
+          items:
+            type: string
+        description:
           type: string
-        durationSeconds:
-          type: number
-        aspectRatio:
+        cameraWork:
           type: string
-        resolution:
+        speed:
           type: string
-        cameraMovement:
+        transition:
           type: string
-        lighting:
+        isSignature:
+          type: boolean
+      required:
+        - shotNumber
+        - timestamp
+        - name
+        - effects
+        - description
+        - cameraWork
+        - speed
+        - transition
+        - isSignature
+    VideoEffectInventoryItem:
+      type: object
+      properties:
+        name:
           type: string
-        mood:
+        usedCount:
+          type: integer
+        shots:
+          type: array
+          items:
+            type: integer
+        role:
           type: string
       required:
-        - beatId
-        - beatTitle
-        - prompt
-        - durationSeconds
-        - aspectRatio
-        - resolution
-        - cameraMovement
-        - lighting
-        - mood
+        - name
+        - usedCount
+        - shots
+        - role
+    VideoDensityBlock:
+      type: object
+      properties:
+        timeRange:
+          type: string
+        density:
+          type: string
+          description: "HIGH | MEDIUM | LOW"
+        effects:
+          type: array
+          items:
+            type: string
+        count:
+          type: integer
+        duration:
+          type: string
+      required:
+        - timeRange
+        - density
+        - effects
+        - count
+        - duration
+    VideoEnergyArc:
+      type: object
+      properties:
+        act1:
+          type: string
+        act2:
+          type: string
+        act3:
+          type: string
+      required:
+        - act1
+        - act2
+        - act3
     VideoPromptsResponse:
       type: object
       properties:
-        prompts:
+        shots:
           type: array
           items:
-            $ref: "#/components/schemas/VideoPrompt"
+            $ref: "#/components/schemas/VideoShot"
+        effectsInventory:
+          type: array
+          items:
+            $ref: "#/components/schemas/VideoEffectInventoryItem"
+        densityMap:
+          type: array
+          items:
+            $ref: "#/components/schemas/VideoDensityBlock"
+        energyArc:
+          $ref: "#/components/schemas/VideoEnergyArc"
+        lastFrameDescription:
+          type: string
+        copyablePrompt:
+          type: string
       required:
-        - prompts
+        - shots
+        - effectsInventory
+        - densityMap
+        - energyArc
+        - lastFrameDescription
+        - copyablePrompt
     VideoPromptsRequest:
       type: object
       properties:
-        title:
+        story:
+          $ref: "#/components/schemas/StoryResponse"
+        style:
           type: string
-        logline:
-          type: string
-        genre:
-          type: string
-        tone:
-          type: string
-        beats:
-          type: array
-          items:
-            $ref: "#/components/schemas/StoryBeat"
-        aspectRatio:
-          type: string
-          description: e.g. "16:9", "9:16", "1:1"
-        resolution:
-          type: string
-          description: e.g. "720p", "1080p", "4k"
-        defaultDuration:
+        duration:
           type: number
-          description: Default per-shot duration in seconds (5 or 10)
-        styleNotes:
+          description: Duration of this single part in seconds
+        part:
+          type: integer
+        totalParts:
+          type: integer
+        previousLastFrame:
+          type: string
+          description: lastFrameDescription from the previous part for continuation
+      required:
+        - story
+        - style
+        - duration
+        - part
+        - totalParts
+
+    MusicPartDirection:
+      type: object
+      properties:
+        part:
+          type: integer
+        musicDirection:
           type: string
       required:
-        - title
-        - beats
+        - part
+        - musicDirection
     MusicBriefResponse:
       type: object
       properties:
-        title:
+        genre:
           type: string
-        styleTags:
+        subGenre:
+          type: string
+        tempo:
+          type: string
+        energy:
+          type: string
+          description: "low | medium | high | explosive"
+        instruments:
           type: array
           items:
             type: string
-        bpm:
-          type: integer
-        key:
-          type: string
         mood:
           type: string
-        instrumentation:
+        vocalStyle:
+          type: string
+          nullable: true
+        referenceArtists:
           type: array
           items:
             type: string
-        structure:
-          type: array
-          items:
-            type: object
-            properties:
-              section:
-                type: string
-              description:
-                type: string
-            required:
-              - section
-              - description
         sunoPrompt:
           type: string
-          description: Suno-formatted prompt with bracketed sections
         udioPrompt:
           type: string
-          description: Udio-formatted prompt
-        lyrics:
+        timingNotes:
           type: string
-          description: Lyrics if vocal track, empty string if instrumental
-        notes:
-          type: string
+        partBreakdown:
+          type: array
+          items:
+            $ref: "#/components/schemas/MusicPartDirection"
       required:
-        - title
-        - styleTags
-        - bpm
-        - key
+        - genre
+        - subGenre
+        - tempo
+        - energy
+        - instruments
         - mood
-        - instrumentation
-        - structure
+        - referenceArtists
         - sunoPrompt
         - udioPrompt
-        - lyrics
-        - notes
+        - timingNotes
+        - partBreakdown
     MusicBriefRequest:
       type: object
       properties:
-        concept:
-          type: string
-        genre:
+        story:
+          $ref: "#/components/schemas/StoryResponse"
+        style:
           type: string
         mood:
           type: string
-        durationSeconds:
+        duration:
           type: number
-        vocal:
-          type: boolean
-          description: Whether the track has vocals or is instrumental
-        referenceArtists:
+        language:
           type: string
-        storyContext:
+        energyLevel:
+          type: integer
+          description: 1-10 scale
+        tempo:
           type: string
-          description: Optional story context to align music with narrative
+          description: "slow | medium | fast | very_fast"
+        totalParts:
+          type: integer
       required:
-        - concept
-    VoiceoverLine:
+        - story
+        - style
+        - mood
+        - duration
+        - language
+
+    VoiceoverAlternateVersion:
       type: object
       properties:
-        beatId:
+        label:
           type: string
-        beatTitle:
-          type: string
-        text:
-          type: string
-        durationSeconds:
-          type: number
-        deliveryNotes:
+        script:
           type: string
       required:
-        - text
-        - durationSeconds
-        - deliveryNotes
+        - label
+        - script
     VoiceoverResponse:
       type: object
       properties:
         language:
           type: string
-        voiceProfile:
+          description: "english | hindi | hinglish"
+        script:
           type: string
         wordCount:
           type: integer
         estimatedDuration:
-          type: number
-        lines:
+          type: string
+        tone:
+          type: string
+        deliveryNotes:
+          type: string
+        emphasisWords:
           type: array
           items:
-            $ref: "#/components/schemas/VoiceoverLine"
-        fullScript:
+            type: string
+        alternateVersions:
+          type: array
+          items:
+            $ref: "#/components/schemas/VoiceoverAlternateVersion"
+        elevenlabsPrompt:
           type: string
-        deliveryGuide:
+        copyableScript:
           type: string
       required:
         - language
-        - voiceProfile
+        - script
         - wordCount
         - estimatedDuration
-        - lines
-        - fullScript
-        - deliveryGuide
+        - tone
+        - deliveryNotes
+        - emphasisWords
+        - alternateVersions
+        - elevenlabsPrompt
+        - copyableScript
     VoiceoverRequest:
       type: object
       properties:
-        title:
+        story:
+          $ref: "#/components/schemas/StoryResponse"
+        style:
           type: string
-        logline:
-          type: string
-        beats:
-          type: array
-          items:
-            $ref: "#/components/schemas/StoryBeat"
         language:
           type: string
-          description: "english | hindi | hinglish"
-        voiceProfile:
+        tone:
           type: string
-          description: "e.g. warm-female, deep-male, narrator, conversational"
-        pacing:
-          type: string
-          description: "slow | medium | fast"
-        wordsPerMinute:
+        duration:
+          type: number
+        part:
           type: integer
-        styleNotes:
+        pace:
           type: string
+          description: "slow | normal | fast"
       required:
+        - story
         - language
+        - tone
+        - duration
+        - part

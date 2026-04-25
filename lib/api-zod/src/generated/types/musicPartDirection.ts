@@ -6,9 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface StoryRequest {
-  brief: string;
-  genre: string;
-  /** Total target duration in seconds */
-  duration: number;
+export interface MusicPartDirection {
+  part: number;
+  musicDirection: string;
 }

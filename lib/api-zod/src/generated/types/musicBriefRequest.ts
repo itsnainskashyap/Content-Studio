@@ -5,15 +5,17 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { StoryResponse } from "./storyResponse";
 
 export interface MusicBriefRequest {
-  concept: string;
-  genre?: string;
-  mood?: string;
-  durationSeconds?: number;
-  /** Whether the track has vocals or is instrumental */
-  vocal?: boolean;
-  referenceArtists?: string;
-  /** Optional story context to align music with narrative */
-  storyContext?: string;
+  story: StoryResponse;
+  style: string;
+  mood: string;
+  duration: number;
+  language: string;
+  /** 1-10 scale */
+  energyLevel?: number;
+  /** slow | medium | fast | very_fast */
+  tempo?: string;
+  totalParts?: number;
 }

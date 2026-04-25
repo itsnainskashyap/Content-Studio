@@ -40,7 +40,6 @@ type Awaited<O> = O extends AwaitedInput<infer T> ? T : never;
 type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
 /**
- * Returns server health status
  * @summary Health check
  */
 export const getHealthCheckUrl = () => {
@@ -116,7 +115,7 @@ export function useHealthCheck<
 }
 
 /**
- * @summary Generate a structured story from a concept
+ * @summary Generate a structured story from a brief
  */
 export const getGenerateStoryUrl = () => {
   return `/api/generate-story`;
@@ -179,7 +178,7 @@ export type GenerateStoryMutationBody = BodyType<StoryRequest>;
 export type GenerateStoryMutationError = ErrorType<AiError>;
 
 /**
- * @summary Generate a structured story from a concept
+ * @summary Generate a structured story from a brief
  */
 export const useGenerateStory = <
   TError = ErrorType<AiError>,
@@ -202,7 +201,7 @@ export const useGenerateStory = <
 };
 
 /**
- * @summary Continue an existing story with new beats
+ * @summary Continue an existing story with new acts
  */
 export const getContinueStoryUrl = () => {
   return `/api/continue-story`;
@@ -265,7 +264,7 @@ export type ContinueStoryMutationBody = BodyType<ContinueStoryRequest>;
 export type ContinueStoryMutationError = ErrorType<AiError>;
 
 /**
- * @summary Continue an existing story with new beats
+ * @summary Continue an existing story with new acts
  */
 export const useContinueStory = <
   TError = ErrorType<AiError>,
@@ -288,7 +287,7 @@ export const useContinueStory = <
 };
 
 /**
- * @summary Generate Seedance 2.0 video prompts from story beats
+ * @summary Generate Seedance 2.0 video prompts for one part of the video
  */
 export const getGenerateVideoPromptsUrl = () => {
   return `/api/generate-video-prompts`;
@@ -351,7 +350,7 @@ export type GenerateVideoPromptsMutationBody = BodyType<VideoPromptsRequest>;
 export type GenerateVideoPromptsMutationError = ErrorType<AiError>;
 
 /**
- * @summary Generate Seedance 2.0 video prompts from story beats
+ * @summary Generate Seedance 2.0 video prompts for one part of the video
  */
 export const useGenerateVideoPrompts = <
   TError = ErrorType<AiError>,
@@ -374,7 +373,7 @@ export const useGenerateVideoPrompts = <
 };
 
 /**
- * @summary Generate a Suno/Udio music brief from a concept or story
+ * @summary Generate a Suno/Udio music brief for the project
  */
 export const getGenerateMusicBriefUrl = () => {
   return `/api/generate-music-brief`;
@@ -437,7 +436,7 @@ export type GenerateMusicBriefMutationBody = BodyType<MusicBriefRequest>;
 export type GenerateMusicBriefMutationError = ErrorType<AiError>;
 
 /**
- * @summary Generate a Suno/Udio music brief from a concept or story
+ * @summary Generate a Suno/Udio music brief for the project
  */
 export const useGenerateMusicBrief = <
   TError = ErrorType<AiError>,
@@ -460,7 +459,7 @@ export const useGenerateMusicBrief = <
 };
 
 /**
- * @summary Generate a voiceover script in English, Hindi, or Hinglish
+ * @summary Generate a voiceover script in English, Hindi, or Hinglish for one video part
  */
 export const getGenerateVoiceoverUrl = () => {
   return `/api/generate-voiceover`;
@@ -523,7 +522,7 @@ export type GenerateVoiceoverMutationBody = BodyType<VoiceoverRequest>;
 export type GenerateVoiceoverMutationError = ErrorType<AiError>;
 
 /**
- * @summary Generate a voiceover script in English, Hindi, or Hinglish
+ * @summary Generate a voiceover script in English, Hindi, or Hinglish for one video part
  */
 export const useGenerateVoiceover = <
   TError = ErrorType<AiError>,

@@ -5,14 +5,9 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { StoryBeat } from "./storyBeat";
+import type { StoryResponse } from "./storyResponse";
 
 export interface ContinueStoryRequest {
-  title: string;
-  logline?: string;
-  genre?: string;
-  tone?: string;
-  existingBeats: StoryBeat[];
-  additionalBeats?: number;
-  guidance?: string;
+  existingStory: StoryResponse;
+  direction: string;
 }

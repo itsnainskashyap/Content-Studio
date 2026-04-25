@@ -6,7 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type MusicBriefResponseStructureItem = {
-  section: string;
-  description: string;
-};
+export interface VoiceoverAlternateVersion {
+  label: string;
+  script: string;
+}

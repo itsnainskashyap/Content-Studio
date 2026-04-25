@@ -1,294 +1,173 @@
-import { useState, useEffect } from "react";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import * as z from "zod";
-import { storage, Settings as SettingsType } from "@/lib/storage";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormDescription } from "@/components/ui/form";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Download, Upload, Trash2, Save, TerminalSquare } from "lucide-react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
+import { storage, STYLES, type Settings } from "@/lib/storage";
 
-const formSchema = z.object({
-  defaultAspectRatio: z.string(),
-  defaultLanguage: z.string(),
-  defaultVoiceProfile: z.string(),
-  defaultWPM: z.coerce.number().min(50).max(300),
-  defaultDuration: z.coerce.number().min(1).max(30),
-});
+const PART_DURATIONS = [5, 10, 15, 20];
+const LANGS: Array<{ key: Settings["defaultLanguage"]; label: string }> = [
+  { key: "english", label: "English" },
+  { key: "hindi", label: "हिंदी" },
+  { key: "hinglish", label: "Hinglish" },
+];
 
-export default function Settings() {
-  const [stats, setStats] = useState({ projects: 0 });
-
-  const form = useForm<z.infer<typeof formSchema>>({
-    resolver: zodResolver(formSchema),
-    defaultValues: {
-      defaultAspectRatio: "16:9",
-      defaultLanguage: "english",
-      defaultVoiceProfile: "narrator",
-      defaultWPM: 150,
-      defaultDuration: 5,
-    },
-  });
+export default function SettingsPage() {
+  const [settings, setSettings] = useState<Settings>(storage.getSettings());
+  const [confirmClear, setConfirmClear] = useState(false);
 
   useEffect(() => {
-    const settings = storage.getSettings();
-    form.reset(settings);
-    setStats({ projects: storage.getProjects().length });
-  }, [form]);
+    setSettings(storage.getSettings());
+  }, []);
 
-  function onSubmit(values: z.infer<typeof formSchema>) {
-    storage.saveSettings(values);
-    toast.success("Preferences saved");
-  }
+  const update = (next: Partial<Settings>) => {
+    const updated = { ...settings, ...next };
+    setSettings(updated);
+    storage.saveSettings(updated);
+    toast.success("Settings saved");
+  };
 
-  function handleExport() {
-    const data = storage.exportData();
-    const blob = new Blob([data], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `contentstudio-backup-${new Date().toISOString().split('T')[0]}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    toast.success("Backup exported");
-  }
-
-  function handleImport(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const content = event.target?.result as string;
-      const success = storage.importData(content);
-      if (success) {
-        toast.success("Backup restored successfully");
-        setStats({ projects: storage.getProjects().length });
-        form.reset(storage.getSettings());
-      } else {
-        toast.error("Invalid backup file");
-      }
-    };
-    reader.readAsText(file);
-    e.target.value = ''; // reset input
-  }
-
-  function handleClearAll() {
+  const clearAll = () => {
     storage.clearAll();
-    setStats({ projects: 0 });
+    setSettings(storage.getSettings());
+    setConfirmClear(false);
+    window.dispatchEvent(new Event("cs:projects-changed"));
     toast.success("All data cleared");
-  }
+  };
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-500 max-w-3xl">
-      <div>
-        <h1 className="text-4xl font-display mb-2">Settings</h1>
-        <p className="text-muted-foreground">Global preferences and data management.</p>
+    <div className="px-6 py-10 md:px-12 md:py-14 max-w-3xl mx-auto">
+      <div className="text-xs font-mono uppercase tracking-widest text-muted-foreground">
+        Preferences
       </div>
+      <h1 className="mt-1 font-display text-4xl md:text-5xl tracking-tight">
+        Settings
+      </h1>
 
-      <Card className="bg-card border-border rounded-none">
-        <CardHeader className="border-b border-border pb-4 mb-4">
-          <CardTitle className="font-display text-2xl flex items-center gap-2">
-            <TerminalSquare className="w-5 h-5 text-primary" /> Default Parameters
-          </CardTitle>
-          <CardDescription>These values will pre-fill across generators.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-4">
-                  <h3 className="font-mono text-sm uppercase text-muted-foreground border-b border-border pb-2">Video</h3>
-                  <FormField
-                    control={form.control}
-                    name="defaultAspectRatio"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="font-sans text-sm">Aspect Ratio</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
-                          <FormControl>
-                            <SelectTrigger className="rounded-none border-border">
-                              <SelectValue />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent className="rounded-none">
-                            <SelectItem value="16:9">16:9</SelectItem>
-                            <SelectItem value="9:16">9:16</SelectItem>
-                            <SelectItem value="1:1">1:1</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="defaultDuration"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="font-sans text-sm">Shot Duration (s)</FormLabel>
-                        <FormControl>
-                          <Input type="number" className="rounded-none border-border focus-visible:ring-primary" {...field} />
-                        </FormControl>
-                      </FormItem>
-                    )}
-                  />
-                </div>
+      <section className="mt-10 border border-border rounded-md p-5 bg-card">
+        <h2 className="font-mono text-xs uppercase tracking-widest text-muted-foreground">
+          Default per-part duration
+        </h2>
+        <div className="mt-2 flex gap-2 flex-wrap">
+          {PART_DURATIONS.map((d) => (
+            <button
+              key={d}
+              type="button"
+              onClick={() => update({ defaultDuration: d })}
+              className={`px-3 py-1.5 rounded-md text-xs font-mono uppercase tracking-widest border transition-colors ${
+                settings.defaultDuration === d
+                  ? "bg-primary text-black border-primary"
+                  : "border-border text-muted-foreground hover:text-foreground"
+              }`}
+              data-testid={`pref-duration-${d}`}
+            >
+              {d}s
+            </button>
+          ))}
+        </div>
+      </section>
 
-                <div className="space-y-4">
-                  <h3 className="font-mono text-sm uppercase text-muted-foreground border-b border-border pb-2">Voiceover</h3>
-                  <FormField
-                    control={form.control}
-                    name="defaultLanguage"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="font-sans text-sm">Language</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
-                          <FormControl>
-                            <SelectTrigger className="rounded-none border-border">
-                              <SelectValue />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent className="rounded-none">
-                            <SelectItem value="english">English</SelectItem>
-                            <SelectItem value="hindi">Hindi</SelectItem>
-                            <SelectItem value="hinglish">Hinglish</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </FormItem>
-                    )}
-                  />
-                  <div className="grid grid-cols-2 gap-2">
-                    <FormField
-                      control={form.control}
-                      name="defaultVoiceProfile"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="font-sans text-sm">Voice</FormLabel>
-                          <Select onValueChange={field.onChange} value={field.value}>
-                            <FormControl>
-                              <SelectTrigger className="rounded-none border-border">
-                                <SelectValue />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent className="rounded-none">
-                              <SelectItem value="narrator">Narrator</SelectItem>
-                              <SelectItem value="conversational">Conversational</SelectItem>
-                              <SelectItem value="intense">Intense</SelectItem>
-                              <SelectItem value="warm">Warm</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name="defaultWPM"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="font-sans text-sm">WPM</FormLabel>
-                          <FormControl>
-                            <Input type="number" className="rounded-none border-border focus-visible:ring-primary" {...field} />
-                          </FormControl>
-                        </FormItem>
-                      )}
-                    />
-                  </div>
-                </div>
+      <section className="mt-6 border border-border rounded-md p-5 bg-card">
+        <h2 className="font-mono text-xs uppercase tracking-widest text-muted-foreground">
+          Default style
+        </h2>
+        <select
+          value={settings.defaultStyle}
+          onChange={(e) => update({ defaultStyle: e.target.value })}
+          className="mt-2 w-full bg-background border border-border rounded-md p-2 text-sm focus:outline-none focus:border-primary"
+          data-testid="pref-style"
+        >
+          {STYLES.map((s) => (
+            <option key={s.key} value={s.name}>
+              {s.name}
+            </option>
+          ))}
+        </select>
+      </section>
+
+      <section className="mt-6 border border-border rounded-md p-5 bg-card">
+        <h2 className="font-mono text-xs uppercase tracking-widest text-muted-foreground">
+          Default voiceover language
+        </h2>
+        <div className="mt-2 grid grid-cols-3 gap-2">
+          {LANGS.map((l) => (
+            <button
+              key={l.key}
+              type="button"
+              onClick={() => update({ defaultLanguage: l.key })}
+              className={`border rounded-md py-3 px-3 text-center transition-colors ${
+                settings.defaultLanguage === l.key
+                  ? "bg-primary text-black border-primary"
+                  : "border-border text-muted-foreground hover:text-foreground"
+              }`}
+              data-testid={`pref-lang-${l.key}`}
+            >
+              <div
+                className="font-display text-lg"
+                style={{
+                  fontFamily:
+                    l.key === "hindi"
+                      ? "var(--app-font-devanagari, 'Noto Sans Devanagari', sans-serif)"
+                      : undefined,
+                }}
+              >
+                {l.label}
               </div>
-              
-              <div className="flex justify-end border-t border-border pt-4">
-                <Button type="submit" className="rounded-none font-display tracking-wide px-8">
-                  <Save className="w-4 h-4 mr-2" /> Save Preferences
-                </Button>
-              </div>
-            </form>
-          </Form>
-        </CardContent>
-      </Card>
+            </button>
+          ))}
+        </div>
+      </section>
 
-      <Card className="bg-card border-border rounded-none">
-        <CardHeader className="border-b border-border pb-4 mb-4">
-          <CardTitle className="font-display text-2xl">Data Management</CardTitle>
-          <CardDescription>Everything is stored locally in your browser.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="flex items-center justify-between p-4 border border-border bg-background">
-            <div>
-              <h4 className="font-bold">Export Backup</h4>
-              <p className="text-sm text-muted-foreground font-mono mt-1">Saves {stats.projects} projects to JSON</p>
-            </div>
-            <Button onClick={handleExport} variant="outline" className="rounded-none border-border hover:text-primary hover:border-primary">
-              <Download className="w-4 h-4 mr-2" /> Download
-            </Button>
-          </div>
+      <section className="mt-6 border border-[#FF4444]/40 rounded-md p-5 bg-card">
+        <h2 className="font-mono text-xs uppercase tracking-widest text-[#FF4444]">
+          Danger zone
+        </h2>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Clear every saved project, setting, and current project pointer in
+          this browser. This cannot be undone.
+        </p>
+        <button
+          type="button"
+          onClick={() => setConfirmClear(true)}
+          className="mt-3 px-4 py-2 rounded-md border border-[#FF4444] text-[#FF4444] font-mono text-xs uppercase tracking-widest hover:bg-[#FF4444]/10"
+          data-testid="button-clear-all"
+        >
+          Clear all data
+        </button>
+      </section>
 
-          <div className="flex items-center justify-between p-4 border border-border bg-background relative overflow-hidden group">
-            <div>
-              <h4 className="font-bold">Restore Backup</h4>
-              <p className="text-sm text-muted-foreground font-mono mt-1">Merge or overwrite from JSON</p>
-            </div>
-            <div className="relative">
-              <Button variant="outline" className="rounded-none border-border hover:text-primary hover:border-primary">
-                <Upload className="w-4 h-4 mr-2" /> Upload JSON
-              </Button>
-              <input 
-                type="file" 
-                accept=".json" 
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" 
-                onChange={handleImport}
-              />
-            </div>
-          </div>
+      <section className="mt-10 text-center text-[11px] text-muted-foreground/70 font-mono">
+        ContentStudio AI · v0.1.0
+      </section>
 
-          <div className="flex items-center justify-between p-4 border border-destructive/20 bg-destructive/5">
-            <div>
-              <h4 className="font-bold text-destructive">Danger Zone</h4>
-              <p className="text-sm text-muted-foreground font-mono mt-1">Wipes all local storage</p>
+      {confirmClear && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-4">
+          <div className="border border-border bg-card rounded-md p-6 max-w-md w-full">
+            <div className="font-display text-2xl tracking-tight">
+              Clear everything?
             </div>
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button variant="destructive" className="rounded-none font-display tracking-wide">
-                  <Trash2 className="w-4 h-4 mr-2" /> Clear All Data
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent className="rounded-none border-border bg-card">
-                <AlertDialogHeader>
-                  <AlertDialogTitle className="font-display tracking-wide text-destructive">Nuke everything?</AlertDialogTitle>
-                  <AlertDialogDescription className="font-sans">
-                    This will permanently delete all {stats.projects} projects, prompts, scripts, and settings from your browser. You cannot undo this.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel className="rounded-none font-mono text-xs uppercase">Cancel</AlertDialogCancel>
-                  <AlertDialogAction onClick={handleClearAll} className="rounded-none font-mono text-xs uppercase bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                    Yes, delete it all
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
+            <p className="mt-2 text-sm text-muted-foreground">
+              All projects and settings will be permanently removed from this
+              browser.
+            </p>
+            <div className="mt-5 flex gap-2 justify-end">
+              <button
+                type="button"
+                onClick={() => setConfirmClear(false)}
+                className="px-4 py-2 rounded-md border border-border font-mono text-xs uppercase tracking-widest"
+                data-testid="button-cancel-clear"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={clearAll}
+                className="px-4 py-2 rounded-md bg-[#FF4444] text-white font-mono text-xs uppercase tracking-widest hover:bg-[#FF6666]"
+                data-testid="button-confirm-clear"
+              >
+                Clear all
+              </button>
+            </div>
           </div>
-        </CardContent>
-      </Card>
-      
-      <div className="text-center pb-8">
-        <p className="font-mono text-xs text-muted-foreground">ContentStudio AI • v2.0.0</p>
-      </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -8,7 +8,6 @@
 import * as zod from "zod";
 
 /**
- * Returns server health status
  * @summary Health check
  */
 export const HealthCheckResponse = zod.object({
@@ -16,206 +15,274 @@ export const HealthCheckResponse = zod.object({
 });
 
 /**
- * @summary Generate a structured story from a concept
+ * @summary Generate a structured story from a brief
  */
 export const GenerateStoryBody = zod.object({
-  concept: zod.string(),
-  genre: zod.string().optional(),
-  tone: zod.string().optional(),
-  targetDuration: zod
-    .number()
-    .optional()
-    .describe("Target total duration in seconds"),
-  beatCount: zod
-    .number()
-    .optional()
-    .describe("Number of beats to generate (e.g. 5-12)"),
+  brief: zod.string(),
+  genre: zod.string(),
+  duration: zod.number().describe("Total target duration in seconds"),
 });
 
 export const GenerateStoryResponse = zod.object({
   title: zod.string(),
-  logline: zod.string(),
-  genre: zod.string(),
-  tone: zod.string(),
-  beats: zod.array(
+  synopsis: zod.string(),
+  acts: zod.array(
     zod.object({
-      id: zod.string(),
+      actNumber: zod.number(),
       title: zod.string(),
       description: zod.string(),
-      duration: zod.number().describe("Beat duration in seconds"),
-      order: zod.number(),
+      keyMoment: zod.string(),
     }),
   ),
+  characters: zod.array(
+    zod.object({
+      name: zod.string(),
+      description: zod.string(),
+    }),
+  ),
+  mood: zod.string(),
+  colorPalette: zod
+    .array(zod.string())
+    .describe('List of hex color strings, e.g. [\"#1a1a1a\", \"#E8FF47\"]'),
+  musicSuggestion: zod.string(),
 });
 
 /**
- * @summary Continue an existing story with new beats
+ * @summary Continue an existing story with new acts
  */
 export const ContinueStoryBody = zod.object({
-  title: zod.string(),
-  logline: zod.string().optional(),
-  genre: zod.string().optional(),
-  tone: zod.string().optional(),
-  existingBeats: zod.array(
-    zod.object({
-      id: zod.string(),
-      title: zod.string(),
-      description: zod.string(),
-      duration: zod.number().describe("Beat duration in seconds"),
-      order: zod.number(),
-    }),
-  ),
-  additionalBeats: zod.number().optional(),
-  guidance: zod.string().optional(),
+  existingStory: zod.object({
+    title: zod.string(),
+    synopsis: zod.string(),
+    acts: zod.array(
+      zod.object({
+        actNumber: zod.number(),
+        title: zod.string(),
+        description: zod.string(),
+        keyMoment: zod.string(),
+      }),
+    ),
+    characters: zod.array(
+      zod.object({
+        name: zod.string(),
+        description: zod.string(),
+      }),
+    ),
+    mood: zod.string(),
+    colorPalette: zod
+      .array(zod.string())
+      .describe('List of hex color strings, e.g. [\"#1a1a1a\", \"#E8FF47\"]'),
+    musicSuggestion: zod.string(),
+  }),
+  direction: zod.string(),
 });
 
 export const ContinueStoryResponse = zod.object({
   title: zod.string(),
-  logline: zod.string(),
-  genre: zod.string(),
-  tone: zod.string(),
-  beats: zod.array(
+  synopsis: zod.string(),
+  acts: zod.array(
     zod.object({
-      id: zod.string(),
+      actNumber: zod.number(),
       title: zod.string(),
       description: zod.string(),
-      duration: zod.number().describe("Beat duration in seconds"),
-      order: zod.number(),
+      keyMoment: zod.string(),
     }),
   ),
+  characters: zod.array(
+    zod.object({
+      name: zod.string(),
+      description: zod.string(),
+    }),
+  ),
+  mood: zod.string(),
+  colorPalette: zod
+    .array(zod.string())
+    .describe('List of hex color strings, e.g. [\"#1a1a1a\", \"#E8FF47\"]'),
+  musicSuggestion: zod.string(),
 });
 
 /**
- * @summary Generate Seedance 2.0 video prompts from story beats
+ * @summary Generate Seedance 2.0 video prompts for one part of the video
  */
 export const GenerateVideoPromptsBody = zod.object({
-  title: zod.string(),
-  logline: zod.string().optional(),
-  genre: zod.string().optional(),
-  tone: zod.string().optional(),
-  beats: zod.array(
-    zod.object({
-      id: zod.string(),
-      title: zod.string(),
-      description: zod.string(),
-      duration: zod.number().describe("Beat duration in seconds"),
-      order: zod.number(),
-    }),
-  ),
-  aspectRatio: zod
+  story: zod.object({
+    title: zod.string(),
+    synopsis: zod.string(),
+    acts: zod.array(
+      zod.object({
+        actNumber: zod.number(),
+        title: zod.string(),
+        description: zod.string(),
+        keyMoment: zod.string(),
+      }),
+    ),
+    characters: zod.array(
+      zod.object({
+        name: zod.string(),
+        description: zod.string(),
+      }),
+    ),
+    mood: zod.string(),
+    colorPalette: zod
+      .array(zod.string())
+      .describe('List of hex color strings, e.g. [\"#1a1a1a\", \"#E8FF47\"]'),
+    musicSuggestion: zod.string(),
+  }),
+  style: zod.string(),
+  duration: zod.number().describe("Duration of this single part in seconds"),
+  part: zod.number(),
+  totalParts: zod.number(),
+  previousLastFrame: zod
     .string()
     .optional()
-    .describe('e.g. \"16:9\", \"9:16\", \"1:1\"'),
-  resolution: zod
-    .string()
-    .optional()
-    .describe('e.g. \"720p\", \"1080p\", \"4k\"'),
-  defaultDuration: zod
-    .number()
-    .optional()
-    .describe("Default per-shot duration in seconds (5 or 10)"),
-  styleNotes: zod.string().optional(),
+    .describe("lastFrameDescription from the previous part for continuation"),
 });
 
 export const GenerateVideoPromptsResponse = zod.object({
-  prompts: zod.array(
+  shots: zod.array(
     zod.object({
-      beatId: zod.string(),
-      beatTitle: zod.string(),
-      prompt: zod.string(),
-      durationSeconds: zod.number(),
-      aspectRatio: zod.string(),
-      resolution: zod.string(),
-      cameraMovement: zod.string(),
-      lighting: zod.string(),
-      mood: zod.string(),
+      shotNumber: zod.number(),
+      timestamp: zod.string().describe('e.g. \"00:00-00:03\"'),
+      name: zod.string(),
+      effects: zod.array(zod.string()),
+      description: zod.string(),
+      cameraWork: zod.string(),
+      speed: zod.string(),
+      transition: zod.string(),
+      isSignature: zod.boolean(),
     }),
   ),
+  effectsInventory: zod.array(
+    zod.object({
+      name: zod.string(),
+      usedCount: zod.number(),
+      shots: zod.array(zod.number()),
+      role: zod.string(),
+    }),
+  ),
+  densityMap: zod.array(
+    zod.object({
+      timeRange: zod.string(),
+      density: zod.string().describe("HIGH | MEDIUM | LOW"),
+      effects: zod.array(zod.string()),
+      count: zod.number(),
+      duration: zod.string(),
+    }),
+  ),
+  energyArc: zod.object({
+    act1: zod.string(),
+    act2: zod.string(),
+    act3: zod.string(),
+  }),
+  lastFrameDescription: zod.string(),
+  copyablePrompt: zod.string(),
 });
 
 /**
- * @summary Generate a Suno/Udio music brief from a concept or story
+ * @summary Generate a Suno/Udio music brief for the project
  */
 export const GenerateMusicBriefBody = zod.object({
-  concept: zod.string(),
-  genre: zod.string().optional(),
-  mood: zod.string().optional(),
-  durationSeconds: zod.number().optional(),
-  vocal: zod
-    .boolean()
-    .optional()
-    .describe("Whether the track has vocals or is instrumental"),
-  referenceArtists: zod.string().optional(),
-  storyContext: zod
-    .string()
-    .optional()
-    .describe("Optional story context to align music with narrative"),
+  story: zod.object({
+    title: zod.string(),
+    synopsis: zod.string(),
+    acts: zod.array(
+      zod.object({
+        actNumber: zod.number(),
+        title: zod.string(),
+        description: zod.string(),
+        keyMoment: zod.string(),
+      }),
+    ),
+    characters: zod.array(
+      zod.object({
+        name: zod.string(),
+        description: zod.string(),
+      }),
+    ),
+    mood: zod.string(),
+    colorPalette: zod
+      .array(zod.string())
+      .describe('List of hex color strings, e.g. [\"#1a1a1a\", \"#E8FF47\"]'),
+    musicSuggestion: zod.string(),
+  }),
+  style: zod.string(),
+  mood: zod.string(),
+  duration: zod.number(),
+  language: zod.string(),
+  energyLevel: zod.number().optional().describe("1-10 scale"),
+  tempo: zod.string().optional().describe("slow | medium | fast | very_fast"),
+  totalParts: zod.number().optional(),
 });
 
 export const GenerateMusicBriefResponse = zod.object({
-  title: zod.string(),
-  styleTags: zod.array(zod.string()),
-  bpm: zod.number(),
-  key: zod.string(),
+  genre: zod.string(),
+  subGenre: zod.string(),
+  tempo: zod.string(),
+  energy: zod.string().describe("low | medium | high | explosive"),
+  instruments: zod.array(zod.string()),
   mood: zod.string(),
-  instrumentation: zod.array(zod.string()),
-  structure: zod.array(
+  vocalStyle: zod.string().nullish(),
+  referenceArtists: zod.array(zod.string()),
+  sunoPrompt: zod.string(),
+  udioPrompt: zod.string(),
+  timingNotes: zod.string(),
+  partBreakdown: zod.array(
     zod.object({
-      section: zod.string(),
-      description: zod.string(),
+      part: zod.number(),
+      musicDirection: zod.string(),
     }),
   ),
-  sunoPrompt: zod
-    .string()
-    .describe("Suno-formatted prompt with bracketed sections"),
-  udioPrompt: zod.string().describe("Udio-formatted prompt"),
-  lyrics: zod
-    .string()
-    .describe("Lyrics if vocal track, empty string if instrumental"),
-  notes: zod.string(),
 });
 
 /**
- * @summary Generate a voiceover script in English, Hindi, or Hinglish
+ * @summary Generate a voiceover script in English, Hindi, or Hinglish for one video part
  */
 export const GenerateVoiceoverBody = zod.object({
-  title: zod.string().optional(),
-  logline: zod.string().optional(),
-  beats: zod
-    .array(
+  story: zod.object({
+    title: zod.string(),
+    synopsis: zod.string(),
+    acts: zod.array(
       zod.object({
-        id: zod.string(),
+        actNumber: zod.number(),
         title: zod.string(),
         description: zod.string(),
-        duration: zod.number().describe("Beat duration in seconds"),
-        order: zod.number(),
+        keyMoment: zod.string(),
       }),
-    )
-    .optional(),
-  language: zod.string().describe("english | hindi | hinglish"),
-  voiceProfile: zod
-    .string()
-    .optional()
-    .describe("e.g. warm-female, deep-male, narrator, conversational"),
-  pacing: zod.string().optional().describe("slow | medium | fast"),
-  wordsPerMinute: zod.number().optional(),
-  styleNotes: zod.string().optional(),
+    ),
+    characters: zod.array(
+      zod.object({
+        name: zod.string(),
+        description: zod.string(),
+      }),
+    ),
+    mood: zod.string(),
+    colorPalette: zod
+      .array(zod.string())
+      .describe('List of hex color strings, e.g. [\"#1a1a1a\", \"#E8FF47\"]'),
+    musicSuggestion: zod.string(),
+  }),
+  style: zod.string().optional(),
+  language: zod.string(),
+  tone: zod.string(),
+  duration: zod.number(),
+  part: zod.number(),
+  pace: zod.string().optional().describe("slow | normal | fast"),
 });
 
 export const GenerateVoiceoverResponse = zod.object({
-  language: zod.string(),
-  voiceProfile: zod.string(),
+  language: zod.string().describe("english | hindi | hinglish"),
+  script: zod.string(),
   wordCount: zod.number(),
-  estimatedDuration: zod.number(),
-  lines: zod.array(
+  estimatedDuration: zod.string(),
+  tone: zod.string(),
+  deliveryNotes: zod.string(),
+  emphasisWords: zod.array(zod.string()),
+  alternateVersions: zod.array(
     zod.object({
-      beatId: zod.string().optional(),
-      beatTitle: zod.string().optional(),
-      text: zod.string(),
-      durationSeconds: zod.number(),
-      deliveryNotes: zod.string(),
+      label: zod.string(),
+      script: zod.string(),
     }),
   ),
-  fullScript: zod.string(),
-  deliveryGuide: zod.string(),
+  elevenlabsPrompt: zod.string(),
+  copyableScript: zod.string(),
 });

@@ -1,299 +1,408 @@
-import { useState } from "react";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import * as z from "zod";
-import { useGenerateStory, useContinueStory } from "@workspace/api-client-react";
-import { storage, Project } from "@/lib/storage";
-import { StoryBeat } from "@workspace/api-client-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, Plus, Save, Copy, Check, BookOpen } from "lucide-react";
-import { toast } from "sonner";
+import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
+import { Loader2, Save, Sparkles, ArrowRight, BookOpen } from "lucide-react";
+import { toast } from "sonner";
+import type {
+  StoryRequest,
+  StoryResponse,
+  ContinueStoryRequest,
+} from "@workspace/api-client-react";
+import { storage, createEmptyProject, GENRES, type Project } from "@/lib/storage";
+import { useApiCall, postJson } from "@/lib/api-call";
+import { ErrorCard } from "@/components/error-card";
+import { CopyButton } from "@/components/copy-button";
 
-const formSchema = z.object({
-  concept: z.string().min(5, "Concept is required"),
-  genre: z.string().optional(),
-  tone: z.string().optional(),
-  targetDuration: z.coerce.number().optional(),
-  beatCount: z.coerce.number().optional(),
-});
+const generateStoryFn = postJson<StoryRequest, StoryResponse>("/generate-story");
+const continueStoryFn = postJson<ContinueStoryRequest, StoryResponse>(
+  "/continue-story",
+);
+
+const DURATIONS = [5, 10, 15, 20, 30, 60];
 
 export default function StoryBuilder() {
-  const [, setLocation] = useLocation();
-  const generateStory = useGenerateStory();
-  const continueStory = useContinueStory();
-  
-  const [currentBeats, setCurrentBeats] = useState<StoryBeat[]>([]);
-  const [storyMeta, setStoryMeta] = useState<{title: string, logline: string, genre: string, tone: string} | null>(null);
-  const [isCopied, setIsCopied] = useState(false);
+  const [, navigate] = useLocation();
+  const [brief, setBrief] = useState("");
+  const [genre, setGenre] = useState("Drama");
+  const [duration, setDuration] = useState(30);
+  const [project, setProject] = useState<Project | null>(null);
+  const [direction, setDirection] = useState("");
 
-  const form = useForm<z.infer<typeof formSchema>>({
-    resolver: zodResolver(formSchema),
-    defaultValues: {
-      concept: "",
-      genre: "Cinematic",
-      tone: "Dramatic",
-      targetDuration: 60,
-      beatCount: 5,
-    },
-  });
+  const storyCall = useApiCall(generateStoryFn);
+  const continueCall = useApiCall(continueStoryFn);
 
-  async function onSubmit(values: z.infer<typeof formSchema>) {
-    try {
-      const result = await generateStory.mutateAsync({ data: values });
-      setCurrentBeats(result.beats);
-      setStoryMeta({
-        title: result.title,
-        logline: result.logline,
-        genre: result.genre,
-        tone: result.tone,
-      });
-      toast.success("Story generated successfully");
-    } catch (error: any) {
-      toast.error(error.message || "Failed to generate story");
-    }
-  }
-
-  async function handleContinue() {
-    if (!storyMeta || currentBeats.length === 0) return;
-    try {
-      const result = await continueStory.mutateAsync({
-        data: {
-          title: storyMeta.title,
-          logline: storyMeta.logline,
-          genre: storyMeta.genre,
-          tone: storyMeta.tone,
-          existingBeats: currentBeats,
-          additionalBeats: 3,
-        }
-      });
-      setCurrentBeats(result.beats);
-      toast.success("Story continued");
-    } catch (error: any) {
-      toast.error("Failed to continue story");
-    }
-  }
-
-  function saveAsProject() {
-    if (!storyMeta) return;
-    
-    const newProject: Project = {
-      id: crypto.randomUUID(),
-      title: storyMeta.title,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      story: {
-        title: storyMeta.title,
-        logline: storyMeta.logline,
-        genre: storyMeta.genre,
-        tone: storyMeta.tone,
-        beats: currentBeats,
+  useEffect(() => {
+    const current = storage.getCurrentProject();
+    if (current) {
+      setProject(current);
+      setBrief(current.brief);
+      setGenre(current.genre);
+      setDuration(current.totalDuration);
+      if (current.story) {
+        storyCall.setData(current.story);
       }
-    };
-    
-    storage.saveProject(newProject);
-    storage.setCurrentProjectId(newProject.id);
-    toast.success("Saved to new project");
-    setLocation(`/history?id=${newProject.id}`);
-  }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  function copyToClipboard() {
-    if (!storyMeta) return;
-    const text = `Title: ${storyMeta.title}\nLogline: ${storyMeta.logline}\n\nBeats:\n${currentBeats.map(b => `[${b.duration}s] ${b.title}: ${b.description}`).join('\n')}`;
-    navigator.clipboard.writeText(text);
-    setIsCopied(true);
-    setTimeout(() => setIsCopied(false), 2000);
-    toast.success("Copied to clipboard");
-  }
+  const handleGenerate = async () => {
+    if (!brief.trim()) {
+      toast.error("Add a brief first");
+      return;
+    }
+    const result = await storyCall.run({ brief, genre, duration });
+    if (result) {
+      toast.success("Story generated");
+    }
+  };
 
-  function updateBeat(index: number, field: keyof StoryBeat, value: string | number) {
-    const newBeats = [...currentBeats];
-    newBeats[index] = { ...newBeats[index], [field]: value };
-    setCurrentBeats(newBeats);
-  }
+  const handleSave = () => {
+    if (!storyCall.data) return;
+    const story = storyCall.data;
+    let p = project;
+    if (!p) {
+      p = createEmptyProject({
+        title: story.title,
+        brief,
+        genre,
+        totalDuration: duration,
+      });
+    } else {
+      p = { ...p, title: story.title, brief, genre, totalDuration: duration };
+    }
+    p.story = story;
+    const saved = storage.saveProject(p);
+    storage.setCurrentProjectId(saved.id);
+    setProject(saved);
+    window.dispatchEvent(new Event("cs:projects-changed"));
+    toast.success("Project saved");
+  };
+
+  const handleContinue = async () => {
+    if (!storyCall.data) return;
+    if (!direction.trim()) {
+      toast.error("Add a continuation direction");
+      return;
+    }
+    const result = await continueCall.run({
+      existingStory: storyCall.data,
+      direction,
+    });
+    if (result) {
+      storyCall.setData(result);
+      setDirection("");
+      toast.success("Story extended");
+    }
+  };
+
+  const story = storyCall.data;
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-500">
-      <div>
-        <h1 className="text-4xl font-display mb-2">Story Builder</h1>
-        <p className="text-muted-foreground">Generate structured beat sheets from a raw concept.</p>
+    <div className="px-6 py-10 md:px-12 md:py-14 max-w-6xl mx-auto">
+      <div className="mb-10">
+        <div className="text-xs font-mono uppercase tracking-widest text-muted-foreground">
+          Step {story ? "2" : "1"} of 2
+        </div>
+        <h1 className="font-display text-4xl md:text-5xl tracking-tight mt-1">
+          Story Builder
+        </h1>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        <div className="lg:col-span-4 space-y-6">
-          <Card className="bg-card border-border rounded-none">
-            <CardHeader className="border-b border-border pb-4 mb-4">
-              <CardTitle className="font-display text-xl">Parameters</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Form {...form}>
-                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                  <FormField
-                    control={form.control}
-                    name="concept"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="font-mono text-xs uppercase text-muted-foreground">Core Concept</FormLabel>
-                        <FormControl>
-                          <Textarea 
-                            placeholder="e.g. A neon-lit cyberpunk chase sequence where the protagonist is hunting a rogue android..." 
-                            className="resize-none h-32 rounded-none border-border focus-visible:ring-primary font-mono text-sm"
-                            {...field} 
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <div className="grid grid-cols-2 gap-4">
-                    <FormField
-                      control={form.control}
-                      name="genre"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="font-mono text-xs uppercase text-muted-foreground">Genre</FormLabel>
-                          <FormControl>
-                            <Input className="rounded-none border-border focus-visible:ring-primary" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name="tone"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="font-mono text-xs uppercase text-muted-foreground">Tone</FormLabel>
-                          <FormControl>
-                            <Input className="rounded-none border-border focus-visible:ring-primary" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <FormField
-                      control={form.control}
-                      name="targetDuration"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="font-mono text-xs uppercase text-muted-foreground">Duration (s)</FormLabel>
-                          <FormControl>
-                            <Input type="number" className="rounded-none border-border focus-visible:ring-primary" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name="beatCount"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="font-mono text-xs uppercase text-muted-foreground">Beats</FormLabel>
-                          <FormControl>
-                            <Input type="number" className="rounded-none border-border focus-visible:ring-primary" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
-                  
-                  <Button 
-                    type="submit" 
-                    className="w-full rounded-none font-display text-lg tracking-wider bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
-                    disabled={generateStory.isPending}
-                  >
-                    {generateStory.isPending ? (
-                      <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Drafting...</>
-                    ) : "Generate Story"}
-                  </Button>
-                </form>
-              </Form>
-            </CardContent>
-          </Card>
+      {/* Step 1 — brief input (always visible, collapsible vibe) */}
+      <section className="border border-border rounded-md p-6 bg-card">
+        <h2 className="font-mono text-xs uppercase tracking-widest text-muted-foreground">
+          Brief
+        </h2>
+        <textarea
+          value={brief}
+          onChange={(e) => setBrief(e.target.value)}
+          placeholder="Describe your video concept… e.g. A street artist in Mumbai discovers their graffiti comes alive at midnight."
+          rows={4}
+          className="mt-3 w-full bg-background border border-border rounded-md p-3 text-sm focus:outline-none focus:border-primary placeholder:text-muted-foreground/60"
+          data-testid="input-brief"
+        />
+
+        <div className="mt-5">
+          <h3 className="font-mono text-xs uppercase tracking-widest text-muted-foreground">
+            Genre
+          </h3>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {GENRES.map((g) => (
+              <button
+                key={g}
+                type="button"
+                onClick={() => setGenre(g)}
+                className={`px-3 py-1.5 rounded-md text-xs font-mono uppercase tracking-widest border transition-colors ${
+                  genre === g
+                    ? "bg-primary text-black border-primary"
+                    : "border-border text-muted-foreground hover:text-foreground hover:border-foreground/30"
+                }`}
+                data-testid={`pill-genre-${g}`}
+              >
+                {g}
+              </button>
+            ))}
+          </div>
         </div>
 
-        <div className="lg:col-span-8">
-          {storyMeta ? (
-            <div className="space-y-6">
-              <div className="flex items-start justify-between gap-4 border border-border p-6 bg-card">
-                <div>
-                  <h2 className="text-3xl font-display mb-2">{storyMeta.title}</h2>
-                  <p className="text-muted-foreground italic border-l-2 border-primary pl-4">{storyMeta.logline}</p>
-                </div>
-                <div className="flex gap-2 shrink-0">
-                  <Button variant="outline" size="icon" onClick={copyToClipboard} className="rounded-none border-border hover:text-primary hover:border-primary" title="Copy text">
-                    {isCopied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                  </Button>
-                  <Button onClick={saveAsProject} className="rounded-none font-display tracking-wide flex items-center gap-2">
-                    <Save className="w-4 h-4" /> Save Project
-                  </Button>
-                </div>
-              </div>
+        <div className="mt-5">
+          <h3 className="font-mono text-xs uppercase tracking-widest text-muted-foreground">
+            Total Duration
+          </h3>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {DURATIONS.map((d) => (
+              <button
+                key={d}
+                type="button"
+                onClick={() => setDuration(d)}
+                className={`px-3 py-1.5 rounded-md text-xs font-mono uppercase tracking-widest border transition-colors ${
+                  duration === d
+                    ? "bg-primary text-black border-primary"
+                    : "border-border text-muted-foreground hover:text-foreground hover:border-foreground/30"
+                }`}
+                data-testid={`pill-duration-${d}`}
+              >
+                {d}s
+              </button>
+            ))}
+          </div>
+        </div>
 
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="font-mono text-sm uppercase text-muted-foreground tracking-widest">Beat Sheet</h3>
-                  <span className="font-mono text-xs text-muted-foreground">Total: {currentBeats.reduce((a,b)=>a+b.duration, 0)}s</span>
+        <button
+          type="button"
+          onClick={handleGenerate}
+          disabled={storyCall.loading}
+          className="mt-6 w-full inline-flex items-center justify-center gap-2 px-5 py-3 rounded-md bg-primary text-black font-mono text-xs uppercase tracking-widest hover:bg-[#D4EB3A] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          data-testid="button-generate-story"
+        >
+          {storyCall.loading ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin" /> Writing your story…
+            </>
+          ) : (
+            <>
+              <Sparkles className="w-4 h-4" /> Generate story
+            </>
+          )}
+        </button>
+
+        {storyCall.error && (
+          <div className="mt-4">
+            <ErrorCard message={storyCall.error} onRetry={handleGenerate} />
+          </div>
+        )}
+      </section>
+
+      {/* Step 2 — story display */}
+      {storyCall.loading && !story && (
+        <div className="mt-8 space-y-3">
+          <Skel className="h-10 w-2/3" />
+          <Skel className="h-4 w-full" />
+          <Skel className="h-4 w-5/6" />
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-6">
+            <Skel className="h-32" />
+            <Skel className="h-32" />
+            <Skel className="h-32" />
+          </div>
+        </div>
+      )}
+
+      {story && (
+        <section className="mt-10">
+          <div className="flex items-start justify-between flex-wrap gap-4">
+            <div className="flex-1 min-w-0">
+              <h2
+                className="font-display text-4xl md:text-5xl tracking-tight"
+                data-testid="story-title"
+              >
+                {story.title}
+              </h2>
+              <p
+                className="mt-3 text-base text-muted-foreground max-w-2xl"
+                data-testid="story-synopsis"
+              >
+                {story.synopsis}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <CopyButton
+                text={`${story.title}\n\n${story.synopsis}\n\n${story.acts
+                  .map(
+                    (a) =>
+                      `Act ${a.actNumber}: ${a.title}\n${a.description}\nKey moment: ${a.keyMoment}`,
+                  )
+                  .join("\n\n")}`}
+                label="Copy story"
+                testId="button-copy-story"
+              />
+            </div>
+          </div>
+
+          <div className="mt-8">
+            <h3 className="font-mono text-xs uppercase tracking-widest text-muted-foreground mb-3">
+              Acts Timeline
+            </h3>
+            <div className="flex gap-3 overflow-x-auto pb-3 -mx-2 px-2">
+              {story.acts.map((act) => (
+                <div
+                  key={act.actNumber}
+                  className="min-w-[260px] max-w-[320px] border border-border rounded-md p-4 bg-card flex-shrink-0"
+                  data-testid={`act-${act.actNumber}`}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-mono uppercase tracking-widest text-primary">
+                      Act {act.actNumber}
+                    </span>
+                  </div>
+                  <h4 className="mt-1 font-display text-2xl tracking-tight">
+                    {act.title}
+                  </h4>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    {act.description}
+                  </p>
+                  <div className="mt-3 border-t border-border pt-3">
+                    <div className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
+                      Key moment
+                    </div>
+                    <p className="text-xs text-foreground mt-1">
+                      {act.keyMoment}
+                    </p>
+                  </div>
                 </div>
-                
-                {currentBeats.map((beat, index) => (
-                  <div key={beat.id} className="border border-border bg-card p-0 flex flex-col md:flex-row group">
-                    <div className="bg-secondary px-4 py-4 md:w-24 flex items-center justify-center border-b md:border-b-0 md:border-r border-border shrink-0">
-                      <Input 
-                        type="number" 
-                        value={beat.duration} 
-                        onChange={(e) => updateBeat(index, 'duration', parseInt(e.target.value) || 0)}
-                        className="w-full text-center font-mono bg-transparent border-none focus-visible:ring-1 p-1 h-8"
-                      />
-                      <span className="font-mono text-xs text-muted-foreground ml-1">s</span>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="border border-border rounded-md p-4 bg-card md:col-span-1">
+              <h3 className="font-mono text-xs uppercase tracking-widest text-muted-foreground">
+                Characters
+              </h3>
+              <ul className="mt-3 space-y-3">
+                {story.characters.map((c) => (
+                  <li key={c.name}>
+                    <div className="font-display text-lg tracking-tight">
+                      {c.name}
                     </div>
-                    <div className="p-4 flex-1 space-y-2">
-                      <Input 
-                        value={beat.title}
-                        onChange={(e) => updateBeat(index, 'title', e.target.value)}
-                        className="font-display text-xl bg-transparent border-transparent hover:border-border focus-visible:border-border focus-visible:ring-0 p-0 h-auto rounded-none"
-                      />
-                      <Textarea 
-                        value={beat.description}
-                        onChange={(e) => updateBeat(index, 'description', e.target.value)}
-                        className="text-sm bg-transparent border-transparent hover:border-border focus-visible:border-border focus-visible:ring-0 p-1 resize-none min-h-[60px] rounded-none"
-                      />
+                    <div className="text-xs text-muted-foreground">
+                      {c.description}
                     </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="border border-border rounded-md p-4 bg-card">
+              <h3 className="font-mono text-xs uppercase tracking-widest text-muted-foreground">
+                Mood
+              </h3>
+              <p className="mt-3 text-sm">{story.mood}</p>
+
+              <h3 className="mt-5 font-mono text-xs uppercase tracking-widest text-muted-foreground">
+                Color Palette
+              </h3>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {story.colorPalette.map((hex) => (
+                  <div
+                    key={hex}
+                    className="flex items-center gap-2 border border-border rounded-md px-2 py-1"
+                  >
+                    <span
+                      className="w-4 h-4 rounded-sm border border-border"
+                      style={{ background: hex }}
+                    />
+                    <span className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
+                      {hex}
+                    </span>
                   </div>
                 ))}
               </div>
+            </div>
 
-              <Button 
-                variant="outline" 
-                className="w-full rounded-none border-dashed border-border py-8 text-muted-foreground hover:text-primary hover:border-primary transition-colors font-display tracking-widest text-lg"
-                onClick={handleContinue}
-                disabled={continueStory.isPending}
-              >
-                {continueStory.isPending ? (
-                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Extending...</>
-                ) : (
-                  <><Plus className="mr-2 h-5 w-5" /> Continue Story</>
-                )}
-              </Button>
+            <div className="border border-border rounded-md p-4 bg-card">
+              <h3 className="font-mono text-xs uppercase tracking-widest text-muted-foreground">
+                Music Suggestion
+              </h3>
+              <p className="mt-3 text-sm">{story.musicSuggestion}</p>
             </div>
-          ) : (
-            <div className="h-full min-h-[400px] border border-dashed border-border bg-card/30 flex flex-col items-center justify-center text-muted-foreground p-8 text-center">
-              <BookOpen className="w-12 h-12 mb-4 opacity-20" />
-              <h3 className="font-display text-2xl mb-2 text-foreground/50">Awaiting Concept</h3>
-              <p className="max-w-md">Fill out the parameters and hit generate to draft a new story beat sheet.</p>
-            </div>
-          )}
-        </div>
-      </div>
+          </div>
+
+          <div className="mt-8 flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={handleGenerate}
+              disabled={storyCall.loading}
+              className="inline-flex items-center gap-2 px-5 py-3 rounded-md border border-border font-mono text-xs uppercase tracking-widest hover:border-primary hover:text-primary transition-colors disabled:opacity-50"
+              data-testid="button-regenerate"
+            >
+              <Sparkles className="w-4 h-4" /> Regenerate
+            </button>
+            <button
+              type="button"
+              onClick={handleSave}
+              className="inline-flex items-center gap-2 px-5 py-3 rounded-md border border-border font-mono text-xs uppercase tracking-widest hover:border-primary hover:text-primary transition-colors"
+              data-testid="button-save-story"
+            >
+              <Save className="w-4 h-4" /> Save to project
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                handleSave();
+                navigate("/generate");
+              }}
+              className="inline-flex items-center gap-2 px-5 py-3 rounded-md bg-primary text-black font-mono text-xs uppercase tracking-widest hover:bg-[#D4EB3A] transition-colors"
+              data-testid="button-to-prompts"
+            >
+              Generate video prompts <ArrowRight className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="mt-10 border border-border rounded-md p-6 bg-card">
+            <h3 className="font-mono text-xs uppercase tracking-widest text-muted-foreground flex items-center gap-2">
+              <BookOpen className="w-3.5 h-3.5" /> Continue this story
+            </h3>
+            <textarea
+              value={direction}
+              onChange={(e) => setDirection(e.target.value)}
+              placeholder="What direction should the next acts take?"
+              rows={2}
+              className="mt-3 w-full bg-background border border-border rounded-md p-3 text-sm focus:outline-none focus:border-primary"
+              data-testid="input-direction"
+            />
+            <button
+              type="button"
+              onClick={handleContinue}
+              disabled={continueCall.loading}
+              className="mt-3 inline-flex items-center gap-2 px-4 py-2 rounded-md border border-border font-mono text-xs uppercase tracking-widest hover:border-primary hover:text-primary transition-colors disabled:opacity-50"
+              data-testid="button-continue-story"
+            >
+              {continueCall.loading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" /> Extending…
+                </>
+              ) : (
+                <>Add more acts</>
+              )}
+            </button>
+            {continueCall.error && (
+              <div className="mt-4">
+                <ErrorCard
+                  message={continueCall.error}
+                  onRetry={handleContinue}
+                />
+              </div>
+            )}
+          </div>
+        </section>
+      )}
     </div>
+  );
+}
+
+function Skel({ className }: { className?: string }) {
+  return (
+    <div
+      className={`bg-secondary/40 rounded-md animate-pulse ${className ?? ""}`}
+    />
   );
 }

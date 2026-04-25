@@ -6,11 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface StoryBeat {
-  id: string;
-  title: string;
+export interface StoryCharacter {
+  name: string;
   description: string;
-  /** Beat duration in seconds */
-  duration: number;
-  order: number;
 }

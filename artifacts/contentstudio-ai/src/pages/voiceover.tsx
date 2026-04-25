@@ -1,345 +1,449 @@
-import { useState, useEffect } from "react";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import * as z from "zod";
-import { useGenerateVoiceover } from "@workspace/api-client-react";
-import { storage, Project } from "@/lib/storage";
-import { VoiceoverResponse } from "@workspace/api-client-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, Save, Copy, Check, Mic2, Play, AlignLeft } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Loader2, Sparkles, Mic } from "lucide-react";
 import { toast } from "sonner";
+import type {
+  VoiceoverRequest,
+  VoiceoverResponse,
+} from "@workspace/api-client-react";
+import {
+  storage,
+  TONES,
+  type Project,
+  type ProjectVoiceoverPart,
+} from "@/lib/storage";
+import { useApiCall, postJson } from "@/lib/api-call";
+import { ErrorCard } from "@/components/error-card";
+import { CopyButton } from "@/components/copy-button";
 import { cn } from "@/lib/utils";
 
-const formSchema = z.object({
-  projectId: z.string().optional(),
-  language: z.string().default("english"),
-  voiceProfile: z.string().default("narrator"),
-  pacing: z.string().default("medium"),
-  wordsPerMinute: z.coerce.number().default(150),
-  styleNotes: z.string().optional(),
-});
+const generateVoFn = postJson<VoiceoverRequest, VoiceoverResponse>(
+  "/generate-voiceover",
+);
+
+type Lang = "english" | "hindi" | "hinglish";
+type Pace = "slow" | "normal" | "fast";
+
+const LANGS: Array<{ key: Lang; label: string; sub?: string }> = [
+  { key: "hindi", label: "हिंदी", sub: "Hindi" },
+  { key: "english", label: "English" },
+  { key: "hinglish", label: "Hinglish", sub: "Hindi + English mix" },
+];
+
+const PACES: Pace[] = ["slow", "normal", "fast"];
 
 export default function VoiceoverGenerator() {
-  const generateVoiceover = useGenerateVoiceover();
-  
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [selectedProject, setSelectedProject] = useState<Project | null>(null);
-  const [voiceover, setVoiceover] = useState<VoiceoverResponse | null>(null);
-  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [project, setProject] = useState<Project | null>(null);
+  const [language, setLanguage] = useState<Lang>("english");
+  const [tone, setTone] = useState<string>("cinematic");
+  const [pace, setPace] = useState<Pace>("normal");
+  const [partTarget, setPartTarget] = useState<"all" | number>("all");
+  const [generating, setGenerating] = useState(false);
+  const [progress, setProgress] = useState<{ current: number; total: number } | null>(null);
+  const [voParts, setVoParts] = useState<ProjectVoiceoverPart[]>([]);
+  const [error, setError] = useState<string | null>(null);
 
-  const form = useForm<z.infer<typeof formSchema>>({
-    resolver: zodResolver(formSchema),
-    defaultValues: {
-      projectId: "none",
-      language: "english",
-      voiceProfile: "narrator",
-      pacing: "medium",
-      wordsPerMinute: 150,
-      styleNotes: "",
-    },
-  });
+  const call = useApiCall(generateVoFn);
 
   useEffect(() => {
-    const allProjects = storage.getProjects();
-    const withStory = allProjects.filter(p => p.story && p.story.beats.length > 0);
-    setProjects(withStory);
-    
-    const settings = storage.getSettings();
-    form.setValue("language", settings.defaultLanguage);
-    form.setValue("voiceProfile", settings.defaultVoiceProfile);
-    form.setValue("wordsPerMinute", settings.defaultWPM);
-
-    const currentId = storage.getCurrentProjectId();
-    if (currentId && withStory.find(p => p.id === currentId)) {
-      form.setValue("projectId", currentId);
-      setSelectedProject(withStory.find(p => p.id === currentId)!);
+    const cur = storage.getCurrentProject();
+    if (cur) {
+      setProject(cur);
+      if (cur.voiceover) {
+        setLanguage(cur.voiceover.language);
+        setTone(cur.voiceover.tone);
+        setVoParts(cur.voiceover.parts);
+      }
     }
-  }, [form]);
+  }, []);
 
-  const watchedProjectId = form.watch("projectId");
-  useEffect(() => {
-    if (watchedProjectId && watchedProjectId !== "none") {
-      const proj = projects.find(p => p.id === watchedProjectId);
-      if (proj) setSelectedProject(proj);
-    } else {
-      setSelectedProject(null);
-    }
-  }, [watchedProjectId, projects]);
+  const totalParts = useMemo(() => {
+    if (!project) return 1;
+    return Math.max(1, project.parts.length || 1);
+  }, [project]);
 
-  async function onSubmit(values: z.infer<typeof formSchema>) {
-    if (!selectedProject || !selectedProject.story) {
-      toast.error("Please select a project with a story");
+  const handleGenerate = async () => {
+    if (!project || !project.story) {
+      toast.error("Save a story first");
       return;
     }
+    const targetParts =
+      partTarget === "all"
+        ? Array.from({ length: totalParts }, (_, i) => i + 1)
+        : [partTarget];
 
-    try {
-      const result = await generateVoiceover.mutateAsync({
-        data: {
-          title: selectedProject.story.title,
-          logline: selectedProject.story.logline,
-          beats: selectedProject.story.beats,
-          language: values.language,
-          voiceProfile: values.voiceProfile,
-          pacing: values.pacing,
-          wordsPerMinute: values.wordsPerMinute,
-          styleNotes: values.styleNotes,
-        }
+    setGenerating(true);
+    setError(null);
+    const collected: ProjectVoiceoverPart[] = [...voParts];
+
+    for (const part of targetParts) {
+      setProgress({ current: part, total: targetParts[targetParts.length - 1] });
+      const partDuration =
+        project.parts[part - 1]?.shots.reduce((sum, s) => {
+          const m = s.timestamp.match(/(\d+):(\d+)-(\d+):(\d+)/);
+          if (!m) return sum;
+          const start = parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+          const end = parseInt(m[3], 10) * 60 + parseInt(m[4], 10);
+          return sum + (end - start);
+        }, 0) || project.duration || Math.ceil(project.totalDuration / totalParts);
+
+      const result = await call.run({
+        story: project.story,
+        style: project.style ?? undefined,
+        language,
+        tone,
+        duration: partDuration,
+        part,
+        pace,
       });
-      setVoiceover(result);
-      toast.success("Voiceover script generated");
-    } catch (error: any) {
-      toast.error(error.message || "Failed to generate script");
+      if (!result) {
+        setError(call.error ?? "Generation failed");
+        setGenerating(false);
+        setProgress(null);
+        return;
+      }
+      const idx = collected.findIndex((c) => c.partNumber === part);
+      const entry: ProjectVoiceoverPart = { ...result, partNumber: part };
+      if (idx >= 0) collected[idx] = entry;
+      else collected.push(entry);
+      collected.sort((a, b) => a.partNumber - b.partNumber);
+      setVoParts([...collected]);
     }
-  }
 
-  function saveToProject() {
-    if (!selectedProject || !voiceover) return;
-    const updatedProject = { ...selectedProject, voiceover };
-    storage.saveProject(updatedProject);
-    setSelectedProject(updatedProject);
-    toast.success("Saved script to project");
-  }
+    const updated: Project = {
+      ...project,
+      voiceover: { language, tone, parts: collected },
+    };
+    const saved = storage.saveProject(updated);
+    setProject(saved);
+    window.dispatchEvent(new Event("cs:projects-changed"));
+    setGenerating(false);
+    setProgress(null);
+    toast.success("Voiceover saved");
+  };
 
-  function copyText(text: string, id: string) {
-    navigator.clipboard.writeText(text);
-    setCopiedId(id);
-    setTimeout(() => setCopiedId(null), 2000);
-    toast.success("Copied to clipboard");
+  if (!project || !project.story) {
+    return (
+      <div className="px-6 py-10 md:px-12 md:py-14 max-w-3xl mx-auto">
+        <h1 className="font-display text-4xl md:text-5xl tracking-tight">
+          Voiceover
+        </h1>
+        <p className="mt-3 text-muted-foreground">
+          Save a story before drafting voiceover scripts.
+        </p>
+        <a
+          href={`${import.meta.env.BASE_URL}story`}
+          className="mt-6 inline-flex items-center gap-2 px-5 py-3 rounded-md bg-primary text-black font-mono text-xs uppercase tracking-widest hover:bg-[#D4EB3A] transition-colors"
+          data-testid="button-go-story"
+        >
+          Go to Story Builder
+        </a>
+      </div>
+    );
   }
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-500">
-      <div>
-        <h1 className="text-4xl font-display mb-2">Voiceover Script</h1>
-        <p className="text-muted-foreground">Draft timed scripts mapped to your story beats.</p>
+    <div className="px-6 py-10 md:px-12 md:py-14 max-w-6xl mx-auto">
+      <div className="text-xs font-mono uppercase tracking-widest text-muted-foreground">
+        Project · {project.title}
       </div>
+      <h1 className="mt-1 font-display text-4xl md:text-5xl tracking-tight">
+        Voiceover
+      </h1>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        <div className="lg:col-span-4 space-y-6">
-          <Card className="bg-card border-border rounded-none">
-            <CardHeader className="border-b border-border pb-4 mb-4">
-              <CardTitle className="font-display text-xl">Voice Direction</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Form {...form}>
-                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                  <FormField
-                    control={form.control}
-                    name="projectId"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="font-mono text-xs uppercase text-muted-foreground">Source Project</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
-                          <FormControl>
-                            <SelectTrigger className="rounded-none border-border">
-                              <SelectValue placeholder="Select a project" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent className="rounded-none">
-                            <SelectItem value="none">Select project...</SelectItem>
-                            {projects.map(p => (
-                              <SelectItem key={p.id} value={p.id}>{p.title}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <FormField
-                      control={form.control}
-                      name="language"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="font-mono text-xs uppercase text-muted-foreground">Language</FormLabel>
-                          <Select onValueChange={field.onChange} value={field.value}>
-                            <FormControl>
-                              <SelectTrigger className="rounded-none border-border">
-                                <SelectValue placeholder="Select" />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent className="rounded-none">
-                              <SelectItem value="english">English</SelectItem>
-                              <SelectItem value="hindi">Hindi</SelectItem>
-                              <SelectItem value="hinglish">Hinglish</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name="pacing"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="font-mono text-xs uppercase text-muted-foreground">Pacing</FormLabel>
-                          <Select onValueChange={field.onChange} value={field.value}>
-                            <FormControl>
-                              <SelectTrigger className="rounded-none border-border">
-                                <SelectValue placeholder="Select" />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent className="rounded-none">
-                              <SelectItem value="slow">Slow</SelectItem>
-                              <SelectItem value="medium">Medium</SelectItem>
-                              <SelectItem value="fast">Fast</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </FormItem>
-                      )}
-                    />
+      <div className="mt-8 border border-border rounded-md p-5 bg-card space-y-6">
+        <div>
+          <h3 className="font-mono text-xs uppercase tracking-widest text-muted-foreground">
+            Language
+          </h3>
+          <div className="mt-2 grid grid-cols-3 gap-2">
+            {LANGS.map((l) => (
+              <button
+                key={l.key}
+                type="button"
+                onClick={() => setLanguage(l.key)}
+                className={cn(
+                  "border rounded-md py-4 px-3 text-center transition-colors",
+                  language === l.key
+                    ? "bg-primary text-black border-primary"
+                    : "border-border text-muted-foreground hover:text-foreground",
+                )}
+                data-testid={`lang-${l.key}`}
+              >
+                <div
+                  className={cn(
+                    "font-display text-2xl tracking-tight",
+                    l.key === "hindi" && "font-devanagari",
+                  )}
+                  style={{
+                    fontFamily:
+                      l.key === "hindi"
+                        ? "var(--app-font-devanagari, 'Noto Sans Devanagari', sans-serif)"
+                        : undefined,
+                  }}
+                >
+                  {l.label}
+                </div>
+                {l.sub && (
+                  <div className="mt-1 text-[10px] font-mono uppercase tracking-widest opacity-70">
+                    {l.sub}
                   </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <FormField
-                      control={form.control}
-                      name="voiceProfile"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="font-mono text-xs uppercase text-muted-foreground">Voice Profile</FormLabel>
-                          <Select onValueChange={field.onChange} value={field.value}>
-                            <FormControl>
-                              <SelectTrigger className="rounded-none border-border">
-                                <SelectValue placeholder="Select" />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent className="rounded-none">
-                              <SelectItem value="narrator">Narrator</SelectItem>
-                              <SelectItem value="conversational">Conversational</SelectItem>
-                              <SelectItem value="intense">Intense</SelectItem>
-                              <SelectItem value="warm">Warm/Friendly</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name="wordsPerMinute"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="font-mono text-xs uppercase text-muted-foreground">WPM (Target)</FormLabel>
-                          <FormControl>
-                            <Input type="number" className="rounded-none border-border focus-visible:ring-primary" {...field} />
-                          </FormControl>
-                        </FormItem>
-                      )}
-                    />
-                  </div>
-
-                  <FormField
-                    control={form.control}
-                    name="styleNotes"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="font-mono text-xs uppercase text-muted-foreground">Direction Notes (Optional)</FormLabel>
-                        <FormControl>
-                          <Textarea 
-                            placeholder="e.g. Needs to sound like a gritty detective monologue..." 
-                            className="resize-none h-20 rounded-none border-border focus-visible:ring-primary font-mono text-sm"
-                            {...field} 
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  
-                  <Button 
-                    type="submit" 
-                    className="w-full rounded-none font-display text-lg tracking-wider bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
-                    disabled={generateVoiceover.isPending || !selectedProject}
-                  >
-                    {generateVoiceover.isPending ? (
-                      <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Drafting Script...</>
-                    ) : "Generate Script"}
-                  </Button>
-                </form>
-              </Form>
-            </CardContent>
-          </Card>
+                )}
+              </button>
+            ))}
+          </div>
         </div>
 
-        <div className="lg:col-span-8">
-          {voiceover ? (
-            <div className="space-y-6">
-              <div className="flex items-center justify-between border border-border p-4 bg-card">
-                <div>
-                  <h2 className="text-xl font-display uppercase">{selectedProject?.title} - Voiceover</h2>
-                  <div className="flex gap-4 mt-2 text-xs font-mono text-muted-foreground">
-                    <span className="flex items-center gap-1"><AlignLeft className="w-3 h-3" /> {voiceover.wordCount} words</span>
-                    <span className="flex items-center gap-1"><Play className="w-3 h-3" /> ~{voiceover.estimatedDuration}s</span>
-                    <span className="px-2 py-0.5 bg-secondary text-foreground uppercase">{voiceover.language}</span>
-                  </div>
+        <div>
+          <h3 className="font-mono text-xs uppercase tracking-widest text-muted-foreground">
+            Tone
+          </h3>
+          <div className="mt-2 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+            {TONES.map((t) => (
+              <button
+                key={t.key}
+                type="button"
+                onClick={() => setTone(t.key)}
+                className={cn(
+                  "border rounded-md p-3 text-center transition-colors",
+                  tone === t.key
+                    ? "bg-primary text-black border-primary"
+                    : "border-border text-muted-foreground hover:text-foreground",
+                )}
+                data-testid={`tone-${t.key}`}
+              >
+                <div className="text-2xl">{t.emoji}</div>
+                <div className="mt-1 text-[10px] font-mono uppercase tracking-widest">
+                  {t.label}
                 </div>
-                <div className="flex gap-2 shrink-0">
-                  <Button variant="outline" onClick={() => copyText(voiceover.fullScript, 'full')} className="rounded-none border-border hover:text-primary hover:border-primary font-mono text-xs">
-                    {copiedId === 'full' ? <Check className="w-4 h-4 mr-2" /> : <Copy className="w-4 h-4 mr-2" />} Full Script
-                  </Button>
-                  <Button onClick={saveToProject} className="rounded-none font-display tracking-wide flex items-center gap-2">
-                    <Save className="w-4 h-4" /> Save
-                  </Button>
-                </div>
-              </div>
+              </button>
+            ))}
+          </div>
+        </div>
 
-              <div className="border border-border bg-card p-4 text-sm text-muted-foreground italic border-l-2 border-l-primary">
-                <span className="font-bold text-foreground not-italic block mb-1">Director's Note:</span>
-                {voiceover.deliveryGuide}
-              </div>
-
-              <div className="space-y-4">
-                <h3 className="font-mono text-sm uppercase text-muted-foreground tracking-widest border-b border-border pb-2">Line by Line</h3>
-                
-                {voiceover.lines.map((line, index) => (
-                  <div key={index} className="border border-border bg-card flex flex-col group">
-                    <div className="bg-secondary/50 px-4 py-2 border-b border-border flex items-center justify-between">
-                      <span className="font-display tracking-wide text-primary">{line.beatTitle || `Beat ${index + 1}`}</span>
-                      <span className="font-mono text-[10px] text-muted-foreground uppercase">{line.durationSeconds}s</span>
-                    </div>
-                    <div className="p-4 space-y-3">
-                      <div className="relative">
-                        <p 
-                          className={cn(
-                            "text-lg pr-8 whitespace-pre-wrap leading-relaxed",
-                            voiceover.language === 'hindi' ? "font-devanagari tracking-normal" : "font-sans"
-                          )}
-                          style={{ fontFamily: voiceover.language === 'hindi' ? 'var(--app-font-devanagari)' : undefined }}
-                        >
-                          {line.text}
-                        </p>
-                        <Button 
-                          variant="ghost" 
-                          size="icon" 
-                          className="absolute -top-2 right-0 h-8 w-8 rounded-none text-muted-foreground hover:text-primary hover:bg-secondary"
-                          onClick={() => copyText(line.text, `line-${index}`)}
-                        >
-                          {copiedId === `line-${index}` ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                        </Button>
-                      </div>
-                      
-                      {line.deliveryNotes && (
-                        <div className="bg-background/50 border border-border p-2 text-xs font-mono text-muted-foreground">
-                          <span className="text-foreground uppercase mr-2">Note:</span>
-                          {line.deliveryNotes}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <h3 className="font-mono text-xs uppercase tracking-widest text-muted-foreground">
+              Generate for
+            </h3>
+            <select
+              value={partTarget === "all" ? "all" : String(partTarget)}
+              onChange={(e) =>
+                setPartTarget(
+                  e.target.value === "all"
+                    ? "all"
+                    : parseInt(e.target.value, 10),
+                )
+              }
+              className="mt-2 w-full bg-background border border-border rounded-md p-2 text-sm focus:outline-none focus:border-primary"
+              data-testid="select-part-target"
+            >
+              <option value="all">All parts</option>
+              {Array.from({ length: totalParts }, (_, i) => i + 1).map((p) => (
+                <option key={p} value={p}>
+                  Part {p}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <h3 className="font-mono text-xs uppercase tracking-widest text-muted-foreground">
+              Pace
+            </h3>
+            <div className="mt-2 grid grid-cols-3 gap-2">
+              {PACES.map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => setPace(p)}
+                  className={cn(
+                    "border rounded-md p-2 text-center text-xs font-mono uppercase tracking-widest transition-colors",
+                    pace === p
+                      ? "bg-primary text-black border-primary"
+                      : "border-border text-muted-foreground hover:text-foreground",
+                  )}
+                  data-testid={`pace-${p}`}
+                >
+                  {p}
+                </button>
+              ))}
             </div>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={handleGenerate}
+          disabled={generating}
+          className="w-full inline-flex items-center justify-center gap-2 px-5 py-3 rounded-md bg-primary text-black font-mono text-xs uppercase tracking-widest hover:bg-[#D4EB3A] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          data-testid="button-generate-vo"
+        >
+          {generating ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin" /> Writing voiceover…
+              {progress &&
+                ` (part ${progress.current}/${progress.total})`}
+            </>
           ) : (
-            <div className="h-full min-h-[400px] border border-dashed border-border bg-card/30 flex flex-col items-center justify-center text-muted-foreground p-8 text-center">
-              <Mic2 className="w-12 h-12 mb-4 opacity-20" />
-              <h3 className="font-display text-2xl mb-2 text-foreground/50">No Script Generated</h3>
-              <p className="max-w-md">Select a story project to draft a beat-matched voiceover script.</p>
+            <>
+              <Sparkles className="w-4 h-4" /> Generate voiceover
+            </>
+          )}
+        </button>
+
+        {error && <ErrorCard message={error} onRetry={handleGenerate} />}
+      </div>
+
+      <div className="mt-10 space-y-4">
+        {voParts.length === 0 ? (
+          <div className="border border-border rounded-md p-10 text-center text-muted-foreground">
+            <Mic className="w-8 h-8 mx-auto mb-3 opacity-30" />
+            <div className="font-mono text-xs uppercase tracking-widest">
+              No voiceover yet
+            </div>
+          </div>
+        ) : (
+          voParts.map((p) => (
+            <VoCard key={p.partNumber} part={p} language={language} />
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+function VoCard({
+  part,
+  language,
+}: {
+  part: ProjectVoiceoverPart;
+  language: Lang;
+}) {
+  const [version, setVersion] = useState<"main" | "alt0" | "alt1">("main");
+  const [showEleven, setShowEleven] = useState(false);
+  const versions: Array<{ key: typeof version; label: string; script: string }> = [
+    { key: "main", label: "Main", script: part.script },
+    {
+      key: "alt0",
+      label: part.alternateVersions[0]?.label ?? "More Dramatic",
+      script:
+        part.alternateVersions[0]?.script ?? "(no alternate provided)",
+    },
+    {
+      key: "alt1",
+      label: part.alternateVersions[1]?.label ?? "Casual",
+      script:
+        part.alternateVersions[1]?.script ?? "(no alternate provided)",
+    },
+  ];
+  const active = versions.find((v) => v.key === version)!;
+  const isHindi = language === "hindi";
+
+  return (
+    <div
+      className="border border-border rounded-md bg-card"
+      data-testid={`vo-part-${part.partNumber}`}
+    >
+      <div className="flex items-center justify-between p-4 border-b border-border flex-wrap gap-2">
+        <div className="flex items-center gap-3">
+          <span className="text-[10px] font-mono uppercase tracking-widest text-primary">
+            Part {part.partNumber}
+          </span>
+          <span className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
+            ~{part.estimatedDuration} · {part.wordCount} words
+          </span>
+          <span className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground border border-border rounded px-1.5 py-0.5">
+            {part.language}
+          </span>
+        </div>
+        <div className="flex gap-2">
+          <CopyButton
+            text={part.copyableScript}
+            label="Copy script"
+            testId={`button-copy-script-${part.partNumber}`}
+          />
+          <CopyButton
+            text={part.elevenlabsPrompt + "\n\n" + part.copyableScript}
+            label="Copy for ElevenLabs"
+            testId={`button-copy-eleven-${part.partNumber}`}
+          />
+        </div>
+      </div>
+
+      <div className="px-4 pt-3 flex gap-1 border-b border-border">
+        {versions.map((v) => (
+          <button
+            key={v.key}
+            type="button"
+            onClick={() => setVersion(v.key)}
+            className={cn(
+              "px-3 py-2 text-xs font-mono uppercase tracking-widest transition-colors border-b-2 -mb-px",
+              version === v.key
+                ? "border-primary text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground",
+            )}
+            data-testid={`version-${part.partNumber}-${v.key}`}
+          >
+            {v.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="p-4 space-y-3">
+        <pre
+          className={cn(
+            "whitespace-pre-wrap text-base leading-relaxed bg-background border border-border rounded-md p-4",
+            isHindi ? "font-devanagari" : "font-mono",
+          )}
+          style={{
+            fontFamily: isHindi
+              ? "var(--app-font-devanagari, 'Noto Sans Devanagari', sans-serif)"
+              : undefined,
+          }}
+          data-testid={`script-${part.partNumber}`}
+        >
+          {active.script}
+        </pre>
+
+        <div className="border border-border rounded-md p-3">
+          <div className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
+            Delivery notes
+          </div>
+          <p className="text-sm italic mt-1 text-muted-foreground">
+            {part.deliveryNotes}
+          </p>
+        </div>
+
+        <div>
+          <div className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-2">
+            Emphasis words
+          </div>
+          <div className="flex flex-wrap gap-1">
+            {part.emphasisWords.map((w, i) => (
+              <span
+                key={i}
+                className="text-[11px] px-1.5 py-0.5 rounded bg-primary/20 text-primary border border-primary/40"
+              >
+                {w}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        <div className="border border-border rounded-md">
+          <button
+            type="button"
+            onClick={() => setShowEleven(!showEleven)}
+            className="w-full flex items-center justify-between px-3 py-2 text-xs font-mono uppercase tracking-widest text-muted-foreground hover:text-foreground"
+            data-testid={`toggle-eleven-${part.partNumber}`}
+          >
+            <span>ElevenLabs voice prompt</span>
+            <span>{showEleven ? "−" : "+"}</span>
+          </button>
+          {showEleven && (
+            <div className="px-3 pb-3">
+              <pre className="text-[11px] font-mono whitespace-pre-wrap break-words bg-background border border-border rounded-md p-2">
+                {part.elevenlabsPrompt}
+              </pre>
             </div>
           )}
         </div>

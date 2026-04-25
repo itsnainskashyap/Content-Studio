@@ -13,136 +13,156 @@ export interface AiError {
   error: string;
 }
 
-export interface StoryBeat {
-  id: string;
+export interface StoryAct {
+  actNumber: number;
   title: string;
   description: string;
-  /** Beat duration in seconds */
-  duration: number;
-  order: number;
+  keyMoment: string;
+}
+
+export interface StoryCharacter {
+  name: string;
+  description: string;
 }
 
 export interface StoryResponse {
   title: string;
-  logline: string;
-  genre: string;
-  tone: string;
-  beats: StoryBeat[];
+  synopsis: string;
+  acts: StoryAct[];
+  characters: StoryCharacter[];
+  mood: string;
+  /** List of hex color strings, e.g. ["#1a1a1a", "#E8FF47"] */
+  colorPalette: string[];
+  musicSuggestion: string;
 }
 
 export interface StoryRequest {
-  concept: string;
-  genre?: string;
-  tone?: string;
-  /** Target total duration in seconds */
-  targetDuration?: number;
-  /** Number of beats to generate (e.g. 5-12) */
-  beatCount?: number;
+  brief: string;
+  genre: string;
+  /** Total target duration in seconds */
+  duration: number;
 }
 
 export interface ContinueStoryRequest {
-  title: string;
-  logline?: string;
-  genre?: string;
-  tone?: string;
-  existingBeats: StoryBeat[];
-  additionalBeats?: number;
-  guidance?: string;
+  existingStory: StoryResponse;
+  direction: string;
 }
 
-export interface VideoPrompt {
-  beatId: string;
-  beatTitle: string;
-  prompt: string;
-  durationSeconds: number;
-  aspectRatio: string;
-  resolution: string;
-  cameraMovement: string;
-  lighting: string;
-  mood: string;
+export interface VideoShot {
+  shotNumber: number;
+  /** e.g. "00:00-00:03" */
+  timestamp: string;
+  name: string;
+  effects: string[];
+  description: string;
+  cameraWork: string;
+  speed: string;
+  transition: string;
+  isSignature: boolean;
+}
+
+export interface VideoEffectInventoryItem {
+  name: string;
+  usedCount: number;
+  shots: number[];
+  role: string;
+}
+
+export interface VideoDensityBlock {
+  timeRange: string;
+  /** HIGH | MEDIUM | LOW */
+  density: string;
+  effects: string[];
+  count: number;
+  duration: string;
+}
+
+export interface VideoEnergyArc {
+  act1: string;
+  act2: string;
+  act3: string;
 }
 
 export interface VideoPromptsResponse {
-  prompts: VideoPrompt[];
+  shots: VideoShot[];
+  effectsInventory: VideoEffectInventoryItem[];
+  densityMap: VideoDensityBlock[];
+  energyArc: VideoEnergyArc;
+  lastFrameDescription: string;
+  copyablePrompt: string;
 }
 
 export interface VideoPromptsRequest {
-  title: string;
-  logline?: string;
-  genre?: string;
-  tone?: string;
-  beats: StoryBeat[];
-  /** e.g. "16:9", "9:16", "1:1" */
-  aspectRatio?: string;
-  /** e.g. "720p", "1080p", "4k" */
-  resolution?: string;
-  /** Default per-shot duration in seconds (5 or 10) */
-  defaultDuration?: number;
-  styleNotes?: string;
+  story: StoryResponse;
+  style: string;
+  /** Duration of this single part in seconds */
+  duration: number;
+  part: number;
+  totalParts: number;
+  /** lastFrameDescription from the previous part for continuation */
+  previousLastFrame?: string;
 }
 
-export type MusicBriefResponseStructureItem = {
-  section: string;
-  description: string;
-};
+export interface MusicPartDirection {
+  part: number;
+  musicDirection: string;
+}
 
 export interface MusicBriefResponse {
-  title: string;
-  styleTags: string[];
-  bpm: number;
-  key: string;
+  genre: string;
+  subGenre: string;
+  tempo: string;
+  /** low | medium | high | explosive */
+  energy: string;
+  instruments: string[];
   mood: string;
-  instrumentation: string[];
-  structure: MusicBriefResponseStructureItem[];
-  /** Suno-formatted prompt with bracketed sections */
+  vocalStyle?: string | null;
+  referenceArtists: string[];
   sunoPrompt: string;
-  /** Udio-formatted prompt */
   udioPrompt: string;
-  /** Lyrics if vocal track, empty string if instrumental */
-  lyrics: string;
-  notes: string;
+  timingNotes: string;
+  partBreakdown: MusicPartDirection[];
 }
 
 export interface MusicBriefRequest {
-  concept: string;
-  genre?: string;
-  mood?: string;
-  durationSeconds?: number;
-  /** Whether the track has vocals or is instrumental */
-  vocal?: boolean;
-  referenceArtists?: string;
-  /** Optional story context to align music with narrative */
-  storyContext?: string;
+  story: StoryResponse;
+  style: string;
+  mood: string;
+  duration: number;
+  language: string;
+  /** 1-10 scale */
+  energyLevel?: number;
+  /** slow | medium | fast | very_fast */
+  tempo?: string;
+  totalParts?: number;
 }
 
-export interface VoiceoverLine {
-  beatId?: string;
-  beatTitle?: string;
-  text: string;
-  durationSeconds: number;
-  deliveryNotes: string;
+export interface VoiceoverAlternateVersion {
+  label: string;
+  script: string;
 }
 
 export interface VoiceoverResponse {
+  /** english | hindi | hinglish */
   language: string;
-  voiceProfile: string;
+  script: string;
   wordCount: number;
-  estimatedDuration: number;
-  lines: VoiceoverLine[];
-  fullScript: string;
-  deliveryGuide: string;
+  estimatedDuration: string;
+  tone: string;
+  deliveryNotes: string;
+  emphasisWords: string[];
+  alternateVersions: VoiceoverAlternateVersion[];
+  elevenlabsPrompt: string;
+  copyableScript: string;
 }
 
 export interface VoiceoverRequest {
-  title?: string;
-  logline?: string;
-  beats?: StoryBeat[];
-  /** english | hindi | hinglish */
+  story: StoryResponse;
+  style?: string;
   language: string;
-  /** e.g. warm-female, deep-male, narrator, conversational */
-  voiceProfile?: string;
-  /** slow | medium | fast */
-  pacing?: string;
-  wordsPerMinute?: number;
-  styleNotes?: string;
+  tone: string;
+  duration: number;
+  part: number;
+  /** slow | normal | fast */
+  pace?: string;
 }
