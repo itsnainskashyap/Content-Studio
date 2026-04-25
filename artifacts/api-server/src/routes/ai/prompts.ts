@@ -74,6 +74,12 @@ Return valid JSON only. No markdown, no prose outside JSON. Two pieces matter:
   1) Structured fields the UI uses for visualisation (shots, effectsInventory, densityMap, energyArc, lastFrameDescription, autoVoiceoverScript, audioSummary).
   2) copyablePrompt — the COMPLETE plain-text prompt the user will paste into Seedance 2.0, formatted EXACTLY per the format below.
 
+COPYABLE PROMPT LENGTH — HARD REQUIREMENT
+- copyablePrompt MUST be between 4200 and 4500 characters total (counting EVERY character including spaces, punctuation, line breaks).
+- Aim for ~4350 characters. Never go below 4200 or above 4500.
+- This is a hard ceiling: if you have written 4500 characters, stop adding detail. If you are below 4200, expand shot descriptions / effect descriptions until you reach the band.
+- Do NOT waste characters on filler, hype words, or repetition. Every sentence must add a concrete visual, camera, speed, transition, or audio detail.
+
 SHOTS (the structured shots[] array)
 - Each shot is 1–4 seconds unless the brief calls for a longer hold.
 - Name effects precisely. Use "speed ramp (deceleration)" not "speed ramp"; "digital zoom (scale-in)" not "zoom".
@@ -206,7 +212,8 @@ CRITICAL CONTINUITY RULES (these protect the rest of the video — do NOT violat
 5. DURATION — keep the part roughly the same total duration so the overall part-count math doesn't shift. Don't double the shot count or halve it unless the instruction asks for it.
 6. SCOPE — preserve every field the writer did NOT mention. If they say "shot 3 should be slower", only shot 3 changes meaningfully; the rest of the shots stay intact (you may renumber and update transitions if you removed/added one shot).
 7. SHAPE — return EVERY field of VideoPromptsResponse, every shot, sequential shotNumber starting at 1, exactly one isSignature shot, a fresh effectsInventory and densityMap that match the new shot list, an updated energyArc, and a regenerated copyablePrompt that follows the COPYABLE PROMPT FORMAT exactly.
-8. JSON ONLY — no markdown, no prose outside the JSON.
+8. COPYABLE PROMPT LENGTH — copyablePrompt MUST be between 4200 and 4500 characters total (counting every character including spaces, punctuation and line breaks). Aim for ~4350. Never go below 4200 or above 4500. No filler, no hype words — every sentence must add a concrete visual, camera, speed, transition or audio detail.
+9. JSON ONLY — no markdown, no prose outside the JSON.
 
 Return JSON in the exact same shape as VideoPromptsResponse:
 {

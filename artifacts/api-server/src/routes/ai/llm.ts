@@ -2,14 +2,13 @@ import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { logger } from "../../lib/logger";
 
 const MODEL = "claude-sonnet-4-6";
-// Per-route max output token budget. The video-prompts JSON (shots + effects
-// inventory + density map + energy arc + a long copyablePrompt) routinely
-// runs ~4-5 KB; with the inline copyablePrompt block included the model
-// needs roughly 5-7K tokens of output. We give a generous ceiling (Sonnet
-// 4.6 supports up to 64K output tokens) so JSON is never truncated mid-
-// object. Other routes (story, music, voiceover) stay well under this.
+// Per-route max output token budget. The video-prompts JSON has a strict
+// copyablePrompt size of 4200-4500 chars (~1100-1500 tokens) plus the
+// structured shots / effectsInventory / densityMap / energyArc / audio
+// fields (~1000-1500 tokens). 6000 leaves ~2x headroom while keeping
+// output (and therefore latency) much smaller than the previous 16k cap.
 const DEFAULT_MAX_TOKENS = 8192;
-const VIDEO_PROMPTS_MAX_TOKENS = 16384;
+const VIDEO_PROMPTS_MAX_TOKENS = 6000;
 
 function maxTokensForLabel(label: string): number {
   if (label === "generate-video-prompts") return VIDEO_PROMPTS_MAX_TOKENS;
