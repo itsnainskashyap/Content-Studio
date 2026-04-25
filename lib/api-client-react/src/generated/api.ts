@@ -5,18 +5,33 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import type {
+  MutationFunction,
   QueryFunction,
   QueryKey,
+  UseMutationOptions,
+  UseMutationResult,
   UseQueryOptions,
   UseQueryResult,
 } from "@tanstack/react-query";
 
-import type { HealthStatus } from "./api.schemas";
+import type {
+  AiError,
+  ContinueStoryRequest,
+  HealthStatus,
+  MusicBriefRequest,
+  MusicBriefResponse,
+  StoryRequest,
+  StoryResponse,
+  VideoPromptsRequest,
+  VideoPromptsResponse,
+  VoiceoverRequest,
+  VoiceoverResponse,
+} from "./api.schemas";
 
 import { customFetch } from "../custom-fetch";
-import type { ErrorType } from "../custom-fetch";
+import type { ErrorType, BodyType } from "../custom-fetch";
 
 type AwaitedInput<T> = PromiseLike<T> | T;
 
@@ -99,3 +114,433 @@ export function useHealthCheck<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * @summary Generate a structured story from a concept
+ */
+export const getGenerateStoryUrl = () => {
+  return `/api/generate-story`;
+};
+
+export const generateStory = async (
+  storyRequest: StoryRequest,
+  options?: RequestInit,
+): Promise<StoryResponse> => {
+  return customFetch<StoryResponse>(getGenerateStoryUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(storyRequest),
+  });
+};
+
+export const getGenerateStoryMutationOptions = <
+  TError = ErrorType<AiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof generateStory>>,
+    TError,
+    { data: BodyType<StoryRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof generateStory>>,
+  TError,
+  { data: BodyType<StoryRequest> },
+  TContext
+> => {
+  const mutationKey = ["generateStory"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof generateStory>>,
+    { data: BodyType<StoryRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return generateStory(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type GenerateStoryMutationResult = NonNullable<
+  Awaited<ReturnType<typeof generateStory>>
+>;
+export type GenerateStoryMutationBody = BodyType<StoryRequest>;
+export type GenerateStoryMutationError = ErrorType<AiError>;
+
+/**
+ * @summary Generate a structured story from a concept
+ */
+export const useGenerateStory = <
+  TError = ErrorType<AiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof generateStory>>,
+    TError,
+    { data: BodyType<StoryRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof generateStory>>,
+  TError,
+  { data: BodyType<StoryRequest> },
+  TContext
+> => {
+  return useMutation(getGenerateStoryMutationOptions(options));
+};
+
+/**
+ * @summary Continue an existing story with new beats
+ */
+export const getContinueStoryUrl = () => {
+  return `/api/continue-story`;
+};
+
+export const continueStory = async (
+  continueStoryRequest: ContinueStoryRequest,
+  options?: RequestInit,
+): Promise<StoryResponse> => {
+  return customFetch<StoryResponse>(getContinueStoryUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(continueStoryRequest),
+  });
+};
+
+export const getContinueStoryMutationOptions = <
+  TError = ErrorType<AiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof continueStory>>,
+    TError,
+    { data: BodyType<ContinueStoryRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof continueStory>>,
+  TError,
+  { data: BodyType<ContinueStoryRequest> },
+  TContext
+> => {
+  const mutationKey = ["continueStory"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof continueStory>>,
+    { data: BodyType<ContinueStoryRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return continueStory(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type ContinueStoryMutationResult = NonNullable<
+  Awaited<ReturnType<typeof continueStory>>
+>;
+export type ContinueStoryMutationBody = BodyType<ContinueStoryRequest>;
+export type ContinueStoryMutationError = ErrorType<AiError>;
+
+/**
+ * @summary Continue an existing story with new beats
+ */
+export const useContinueStory = <
+  TError = ErrorType<AiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof continueStory>>,
+    TError,
+    { data: BodyType<ContinueStoryRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof continueStory>>,
+  TError,
+  { data: BodyType<ContinueStoryRequest> },
+  TContext
+> => {
+  return useMutation(getContinueStoryMutationOptions(options));
+};
+
+/**
+ * @summary Generate Seedance 2.0 video prompts from story beats
+ */
+export const getGenerateVideoPromptsUrl = () => {
+  return `/api/generate-video-prompts`;
+};
+
+export const generateVideoPrompts = async (
+  videoPromptsRequest: VideoPromptsRequest,
+  options?: RequestInit,
+): Promise<VideoPromptsResponse> => {
+  return customFetch<VideoPromptsResponse>(getGenerateVideoPromptsUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(videoPromptsRequest),
+  });
+};
+
+export const getGenerateVideoPromptsMutationOptions = <
+  TError = ErrorType<AiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof generateVideoPrompts>>,
+    TError,
+    { data: BodyType<VideoPromptsRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof generateVideoPrompts>>,
+  TError,
+  { data: BodyType<VideoPromptsRequest> },
+  TContext
+> => {
+  const mutationKey = ["generateVideoPrompts"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof generateVideoPrompts>>,
+    { data: BodyType<VideoPromptsRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return generateVideoPrompts(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type GenerateVideoPromptsMutationResult = NonNullable<
+  Awaited<ReturnType<typeof generateVideoPrompts>>
+>;
+export type GenerateVideoPromptsMutationBody = BodyType<VideoPromptsRequest>;
+export type GenerateVideoPromptsMutationError = ErrorType<AiError>;
+
+/**
+ * @summary Generate Seedance 2.0 video prompts from story beats
+ */
+export const useGenerateVideoPrompts = <
+  TError = ErrorType<AiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof generateVideoPrompts>>,
+    TError,
+    { data: BodyType<VideoPromptsRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof generateVideoPrompts>>,
+  TError,
+  { data: BodyType<VideoPromptsRequest> },
+  TContext
+> => {
+  return useMutation(getGenerateVideoPromptsMutationOptions(options));
+};
+
+/**
+ * @summary Generate a Suno/Udio music brief from a concept or story
+ */
+export const getGenerateMusicBriefUrl = () => {
+  return `/api/generate-music-brief`;
+};
+
+export const generateMusicBrief = async (
+  musicBriefRequest: MusicBriefRequest,
+  options?: RequestInit,
+): Promise<MusicBriefResponse> => {
+  return customFetch<MusicBriefResponse>(getGenerateMusicBriefUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(musicBriefRequest),
+  });
+};
+
+export const getGenerateMusicBriefMutationOptions = <
+  TError = ErrorType<AiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof generateMusicBrief>>,
+    TError,
+    { data: BodyType<MusicBriefRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof generateMusicBrief>>,
+  TError,
+  { data: BodyType<MusicBriefRequest> },
+  TContext
+> => {
+  const mutationKey = ["generateMusicBrief"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof generateMusicBrief>>,
+    { data: BodyType<MusicBriefRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return generateMusicBrief(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type GenerateMusicBriefMutationResult = NonNullable<
+  Awaited<ReturnType<typeof generateMusicBrief>>
+>;
+export type GenerateMusicBriefMutationBody = BodyType<MusicBriefRequest>;
+export type GenerateMusicBriefMutationError = ErrorType<AiError>;
+
+/**
+ * @summary Generate a Suno/Udio music brief from a concept or story
+ */
+export const useGenerateMusicBrief = <
+  TError = ErrorType<AiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof generateMusicBrief>>,
+    TError,
+    { data: BodyType<MusicBriefRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof generateMusicBrief>>,
+  TError,
+  { data: BodyType<MusicBriefRequest> },
+  TContext
+> => {
+  return useMutation(getGenerateMusicBriefMutationOptions(options));
+};
+
+/**
+ * @summary Generate a voiceover script in English, Hindi, or Hinglish
+ */
+export const getGenerateVoiceoverUrl = () => {
+  return `/api/generate-voiceover`;
+};
+
+export const generateVoiceover = async (
+  voiceoverRequest: VoiceoverRequest,
+  options?: RequestInit,
+): Promise<VoiceoverResponse> => {
+  return customFetch<VoiceoverResponse>(getGenerateVoiceoverUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(voiceoverRequest),
+  });
+};
+
+export const getGenerateVoiceoverMutationOptions = <
+  TError = ErrorType<AiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof generateVoiceover>>,
+    TError,
+    { data: BodyType<VoiceoverRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof generateVoiceover>>,
+  TError,
+  { data: BodyType<VoiceoverRequest> },
+  TContext
+> => {
+  const mutationKey = ["generateVoiceover"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof generateVoiceover>>,
+    { data: BodyType<VoiceoverRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return generateVoiceover(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type GenerateVoiceoverMutationResult = NonNullable<
+  Awaited<ReturnType<typeof generateVoiceover>>
+>;
+export type GenerateVoiceoverMutationBody = BodyType<VoiceoverRequest>;
+export type GenerateVoiceoverMutationError = ErrorType<AiError>;
+
+/**
+ * @summary Generate a voiceover script in English, Hindi, or Hinglish
+ */
+export const useGenerateVoiceover = <
+  TError = ErrorType<AiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof generateVoiceover>>,
+    TError,
+    { data: BodyType<VoiceoverRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof generateVoiceover>>,
+  TError,
+  { data: BodyType<VoiceoverRequest> },
+  TContext
+> => {
+  return useMutation(getGenerateVoiceoverMutationOptions(options));
+};

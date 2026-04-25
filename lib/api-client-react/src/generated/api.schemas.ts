@@ -8,3 +8,141 @@
 export interface HealthStatus {
   status: string;
 }
+
+export interface AiError {
+  error: string;
+}
+
+export interface StoryBeat {
+  id: string;
+  title: string;
+  description: string;
+  /** Beat duration in seconds */
+  duration: number;
+  order: number;
+}
+
+export interface StoryResponse {
+  title: string;
+  logline: string;
+  genre: string;
+  tone: string;
+  beats: StoryBeat[];
+}
+
+export interface StoryRequest {
+  concept: string;
+  genre?: string;
+  tone?: string;
+  /** Target total duration in seconds */
+  targetDuration?: number;
+  /** Number of beats to generate (e.g. 5-12) */
+  beatCount?: number;
+}
+
+export interface ContinueStoryRequest {
+  title: string;
+  logline?: string;
+  genre?: string;
+  tone?: string;
+  existingBeats: StoryBeat[];
+  additionalBeats?: number;
+  guidance?: string;
+}
+
+export interface VideoPrompt {
+  beatId: string;
+  beatTitle: string;
+  prompt: string;
+  durationSeconds: number;
+  aspectRatio: string;
+  resolution: string;
+  cameraMovement: string;
+  lighting: string;
+  mood: string;
+}
+
+export interface VideoPromptsResponse {
+  prompts: VideoPrompt[];
+}
+
+export interface VideoPromptsRequest {
+  title: string;
+  logline?: string;
+  genre?: string;
+  tone?: string;
+  beats: StoryBeat[];
+  /** e.g. "16:9", "9:16", "1:1" */
+  aspectRatio?: string;
+  /** e.g. "720p", "1080p", "4k" */
+  resolution?: string;
+  /** Default per-shot duration in seconds (5 or 10) */
+  defaultDuration?: number;
+  styleNotes?: string;
+}
+
+export type MusicBriefResponseStructureItem = {
+  section: string;
+  description: string;
+};
+
+export interface MusicBriefResponse {
+  title: string;
+  styleTags: string[];
+  bpm: number;
+  key: string;
+  mood: string;
+  instrumentation: string[];
+  structure: MusicBriefResponseStructureItem[];
+  /** Suno-formatted prompt with bracketed sections */
+  sunoPrompt: string;
+  /** Udio-formatted prompt */
+  udioPrompt: string;
+  /** Lyrics if vocal track, empty string if instrumental */
+  lyrics: string;
+  notes: string;
+}
+
+export interface MusicBriefRequest {
+  concept: string;
+  genre?: string;
+  mood?: string;
+  durationSeconds?: number;
+  /** Whether the track has vocals or is instrumental */
+  vocal?: boolean;
+  referenceArtists?: string;
+  /** Optional story context to align music with narrative */
+  storyContext?: string;
+}
+
+export interface VoiceoverLine {
+  beatId?: string;
+  beatTitle?: string;
+  text: string;
+  durationSeconds: number;
+  deliveryNotes: string;
+}
+
+export interface VoiceoverResponse {
+  language: string;
+  voiceProfile: string;
+  wordCount: number;
+  estimatedDuration: number;
+  lines: VoiceoverLine[];
+  fullScript: string;
+  deliveryGuide: string;
+}
+
+export interface VoiceoverRequest {
+  title?: string;
+  logline?: string;
+  beats?: StoryBeat[];
+  /** english | hindi | hinglish */
+  language: string;
+  /** e.g. warm-female, deep-male, narrator, conversational */
+  voiceProfile?: string;
+  /** slow | medium | fast */
+  pacing?: string;
+  wordsPerMinute?: number;
+  styleNotes?: string;
+}

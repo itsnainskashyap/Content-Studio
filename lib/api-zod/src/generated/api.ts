@@ -14,3 +14,208 @@ import * as zod from "zod";
 export const HealthCheckResponse = zod.object({
   status: zod.string(),
 });
+
+/**
+ * @summary Generate a structured story from a concept
+ */
+export const GenerateStoryBody = zod.object({
+  concept: zod.string(),
+  genre: zod.string().optional(),
+  tone: zod.string().optional(),
+  targetDuration: zod
+    .number()
+    .optional()
+    .describe("Target total duration in seconds"),
+  beatCount: zod
+    .number()
+    .optional()
+    .describe("Number of beats to generate (e.g. 5-12)"),
+});
+
+export const GenerateStoryResponse = zod.object({
+  title: zod.string(),
+  logline: zod.string(),
+  genre: zod.string(),
+  tone: zod.string(),
+  beats: zod.array(
+    zod.object({
+      id: zod.string(),
+      title: zod.string(),
+      description: zod.string(),
+      duration: zod.number().describe("Beat duration in seconds"),
+      order: zod.number(),
+    }),
+  ),
+});
+
+/**
+ * @summary Continue an existing story with new beats
+ */
+export const ContinueStoryBody = zod.object({
+  title: zod.string(),
+  logline: zod.string().optional(),
+  genre: zod.string().optional(),
+  tone: zod.string().optional(),
+  existingBeats: zod.array(
+    zod.object({
+      id: zod.string(),
+      title: zod.string(),
+      description: zod.string(),
+      duration: zod.number().describe("Beat duration in seconds"),
+      order: zod.number(),
+    }),
+  ),
+  additionalBeats: zod.number().optional(),
+  guidance: zod.string().optional(),
+});
+
+export const ContinueStoryResponse = zod.object({
+  title: zod.string(),
+  logline: zod.string(),
+  genre: zod.string(),
+  tone: zod.string(),
+  beats: zod.array(
+    zod.object({
+      id: zod.string(),
+      title: zod.string(),
+      description: zod.string(),
+      duration: zod.number().describe("Beat duration in seconds"),
+      order: zod.number(),
+    }),
+  ),
+});
+
+/**
+ * @summary Generate Seedance 2.0 video prompts from story beats
+ */
+export const GenerateVideoPromptsBody = zod.object({
+  title: zod.string(),
+  logline: zod.string().optional(),
+  genre: zod.string().optional(),
+  tone: zod.string().optional(),
+  beats: zod.array(
+    zod.object({
+      id: zod.string(),
+      title: zod.string(),
+      description: zod.string(),
+      duration: zod.number().describe("Beat duration in seconds"),
+      order: zod.number(),
+    }),
+  ),
+  aspectRatio: zod
+    .string()
+    .optional()
+    .describe('e.g. \"16:9\", \"9:16\", \"1:1\"'),
+  resolution: zod
+    .string()
+    .optional()
+    .describe('e.g. \"720p\", \"1080p\", \"4k\"'),
+  defaultDuration: zod
+    .number()
+    .optional()
+    .describe("Default per-shot duration in seconds (5 or 10)"),
+  styleNotes: zod.string().optional(),
+});
+
+export const GenerateVideoPromptsResponse = zod.object({
+  prompts: zod.array(
+    zod.object({
+      beatId: zod.string(),
+      beatTitle: zod.string(),
+      prompt: zod.string(),
+      durationSeconds: zod.number(),
+      aspectRatio: zod.string(),
+      resolution: zod.string(),
+      cameraMovement: zod.string(),
+      lighting: zod.string(),
+      mood: zod.string(),
+    }),
+  ),
+});
+
+/**
+ * @summary Generate a Suno/Udio music brief from a concept or story
+ */
+export const GenerateMusicBriefBody = zod.object({
+  concept: zod.string(),
+  genre: zod.string().optional(),
+  mood: zod.string().optional(),
+  durationSeconds: zod.number().optional(),
+  vocal: zod
+    .boolean()
+    .optional()
+    .describe("Whether the track has vocals or is instrumental"),
+  referenceArtists: zod.string().optional(),
+  storyContext: zod
+    .string()
+    .optional()
+    .describe("Optional story context to align music with narrative"),
+});
+
+export const GenerateMusicBriefResponse = zod.object({
+  title: zod.string(),
+  styleTags: zod.array(zod.string()),
+  bpm: zod.number(),
+  key: zod.string(),
+  mood: zod.string(),
+  instrumentation: zod.array(zod.string()),
+  structure: zod.array(
+    zod.object({
+      section: zod.string(),
+      description: zod.string(),
+    }),
+  ),
+  sunoPrompt: zod
+    .string()
+    .describe("Suno-formatted prompt with bracketed sections"),
+  udioPrompt: zod.string().describe("Udio-formatted prompt"),
+  lyrics: zod
+    .string()
+    .describe("Lyrics if vocal track, empty string if instrumental"),
+  notes: zod.string(),
+});
+
+/**
+ * @summary Generate a voiceover script in English, Hindi, or Hinglish
+ */
+export const GenerateVoiceoverBody = zod.object({
+  title: zod.string().optional(),
+  logline: zod.string().optional(),
+  beats: zod
+    .array(
+      zod.object({
+        id: zod.string(),
+        title: zod.string(),
+        description: zod.string(),
+        duration: zod.number().describe("Beat duration in seconds"),
+        order: zod.number(),
+      }),
+    )
+    .optional(),
+  language: zod.string().describe("english | hindi | hinglish"),
+  voiceProfile: zod
+    .string()
+    .optional()
+    .describe("e.g. warm-female, deep-male, narrator, conversational"),
+  pacing: zod.string().optional().describe("slow | medium | fast"),
+  wordsPerMinute: zod.number().optional(),
+  styleNotes: zod.string().optional(),
+});
+
+export const GenerateVoiceoverResponse = zod.object({
+  language: zod.string(),
+  voiceProfile: zod.string(),
+  wordCount: zod.number(),
+  estimatedDuration: zod.number(),
+  lines: zod.array(
+    zod.object({
+      beatId: zod.string().optional(),
+      beatTitle: zod.string().optional(),
+      text: zod.string(),
+      durationSeconds: zod.number(),
+      deliveryNotes: zod.string(),
+    }),
+  ),
+  fullScript: zod.string(),
+  deliveryGuide: zod.string(),
+});

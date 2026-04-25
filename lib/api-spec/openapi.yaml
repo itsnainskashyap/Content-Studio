@@ -10,6 +10,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: ai
+    description: AI generation operations (story, prompts, music, voiceover)
 paths:
   /healthz:
     get:
@@ -24,6 +26,156 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /generate-story:
+    post:
+      operationId: generateStory
+      tags: [ai]
+      summary: Generate a structured story from a concept
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StoryRequest"
+      responses:
+        "200":
+          description: Generated story
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StoryResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiError"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiError"
+  /continue-story:
+    post:
+      operationId: continueStory
+      tags: [ai]
+      summary: Continue an existing story with new beats
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ContinueStoryRequest"
+      responses:
+        "200":
+          description: Continued story beats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StoryResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiError"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiError"
+  /generate-video-prompts:
+    post:
+      operationId: generateVideoPrompts
+      tags: [ai]
+      summary: Generate Seedance 2.0 video prompts from story beats
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VideoPromptsRequest"
+      responses:
+        "200":
+          description: Generated video prompts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VideoPromptsResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiError"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiError"
+  /generate-music-brief:
+    post:
+      operationId: generateMusicBrief
+      tags: [ai]
+      summary: Generate a Suno/Udio music brief from a concept or story
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MusicBriefRequest"
+      responses:
+        "200":
+          description: Generated music brief
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MusicBriefResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiError"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiError"
+  /generate-voiceover:
+    post:
+      operationId: generateVoiceover
+      tags: [ai]
+      summary: Generate a voiceover script in English, Hindi, or Hinglish
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VoiceoverRequest"
+      responses:
+        "200":
+          description: Generated voiceover script
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VoiceoverResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiError"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiError"
 components:
   schemas:
     HealthStatus:
@@ -33,4 +185,304 @@ components:
           type: string
       required:
         - status
-
+    AiError:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+    StoryBeat:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        duration:
+          type: number
+          description: Beat duration in seconds
+        order:
+          type: integer
+      required:
+        - id
+        - title
+        - description
+        - duration
+        - order
+    StoryResponse:
+      type: object
+      properties:
+        title:
+          type: string
+        logline:
+          type: string
+        genre:
+          type: string
+        tone:
+          type: string
+        beats:
+          type: array
+          items:
+            $ref: "#/components/schemas/StoryBeat"
+      required:
+        - title
+        - logline
+        - genre
+        - tone
+        - beats
+    StoryRequest:
+      type: object
+      properties:
+        concept:
+          type: string
+        genre:
+          type: string
+        tone:
+          type: string
+        targetDuration:
+          type: number
+          description: Target total duration in seconds
+        beatCount:
+          type: integer
+          description: Number of beats to generate (e.g. 5-12)
+      required:
+        - concept
+    ContinueStoryRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        logline:
+          type: string
+        genre:
+          type: string
+        tone:
+          type: string
+        existingBeats:
+          type: array
+          items:
+            $ref: "#/components/schemas/StoryBeat"
+        additionalBeats:
+          type: integer
+        guidance:
+          type: string
+      required:
+        - title
+        - existingBeats
+    VideoPrompt:
+      type: object
+      properties:
+        beatId:
+          type: string
+        beatTitle:
+          type: string
+        prompt:
+          type: string
+        durationSeconds:
+          type: number
+        aspectRatio:
+          type: string
+        resolution:
+          type: string
+        cameraMovement:
+          type: string
+        lighting:
+          type: string
+        mood:
+          type: string
+      required:
+        - beatId
+        - beatTitle
+        - prompt
+        - durationSeconds
+        - aspectRatio
+        - resolution
+        - cameraMovement
+        - lighting
+        - mood
+    VideoPromptsResponse:
+      type: object
+      properties:
+        prompts:
+          type: array
+          items:
+            $ref: "#/components/schemas/VideoPrompt"
+      required:
+        - prompts
+    VideoPromptsRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        logline:
+          type: string
+        genre:
+          type: string
+        tone:
+          type: string
+        beats:
+          type: array
+          items:
+            $ref: "#/components/schemas/StoryBeat"
+        aspectRatio:
+          type: string
+          description: e.g. "16:9", "9:16", "1:1"
+        resolution:
+          type: string
+          description: e.g. "720p", "1080p", "4k"
+        defaultDuration:
+          type: number
+          description: Default per-shot duration in seconds (5 or 10)
+        styleNotes:
+          type: string
+      required:
+        - title
+        - beats
+    MusicBriefResponse:
+      type: object
+      properties:
+        title:
+          type: string
+        styleTags:
+          type: array
+          items:
+            type: string
+        bpm:
+          type: integer
+        key:
+          type: string
+        mood:
+          type: string
+        instrumentation:
+          type: array
+          items:
+            type: string
+        structure:
+          type: array
+          items:
+            type: object
+            properties:
+              section:
+                type: string
+              description:
+                type: string
+            required:
+              - section
+              - description
+        sunoPrompt:
+          type: string
+          description: Suno-formatted prompt with bracketed sections
+        udioPrompt:
+          type: string
+          description: Udio-formatted prompt
+        lyrics:
+          type: string
+          description: Lyrics if vocal track, empty string if instrumental
+        notes:
+          type: string
+      required:
+        - title
+        - styleTags
+        - bpm
+        - key
+        - mood
+        - instrumentation
+        - structure
+        - sunoPrompt
+        - udioPrompt
+        - lyrics
+        - notes
+    MusicBriefRequest:
+      type: object
+      properties:
+        concept:
+          type: string
+        genre:
+          type: string
+        mood:
+          type: string
+        durationSeconds:
+          type: number
+        vocal:
+          type: boolean
+          description: Whether the track has vocals or is instrumental
+        referenceArtists:
+          type: string
+        storyContext:
+          type: string
+          description: Optional story context to align music with narrative
+      required:
+        - concept
+    VoiceoverLine:
+      type: object
+      properties:
+        beatId:
+          type: string
+        beatTitle:
+          type: string
+        text:
+          type: string
+        durationSeconds:
+          type: number
+        deliveryNotes:
+          type: string
+      required:
+        - text
+        - durationSeconds
+        - deliveryNotes
+    VoiceoverResponse:
+      type: object
+      properties:
+        language:
+          type: string
+        voiceProfile:
+          type: string
+        wordCount:
+          type: integer
+        estimatedDuration:
+          type: number
+        lines:
+          type: array
+          items:
+            $ref: "#/components/schemas/VoiceoverLine"
+        fullScript:
+          type: string
+        deliveryGuide:
+          type: string
+      required:
+        - language
+        - voiceProfile
+        - wordCount
+        - estimatedDuration
+        - lines
+        - fullScript
+        - deliveryGuide
+    VoiceoverRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        logline:
+          type: string
+        beats:
+          type: array
+          items:
+            $ref: "#/components/schemas/StoryBeat"
+        language:
+          type: string
+          description: "english | hindi | hinglish"
+        voiceProfile:
+          type: string
+          description: "e.g. warm-female, deep-male, narrator, conversational"
+        pacing:
+          type: string
+          description: "slow | medium | fast"
+        wordsPerMinute:
+          type: integer
+        styleNotes:
+          type: string
+      required:
+        - language
