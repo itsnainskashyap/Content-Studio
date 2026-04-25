@@ -3,12 +3,18 @@ import { logger } from "../../lib/logger";
 
 const MODEL = "claude-sonnet-4-6";
 // Per-route max output token budget. The video-prompts JSON has a strict
-// copyablePrompt size of 4200-4500 chars (~1100-1500 tokens) plus the
-// structured shots / effectsInventory / densityMap / energyArc / audio
-// fields (~1000-1500 tokens). 6000 leaves ~2x headroom while keeping
-// output (and therefore latency) much smaller than the previous 16k cap.
+// copyablePrompt size of 4200-4500 chars (~1500-2000 tokens) plus the
+// structured shots / effectsInventory / densityMap / energyArc fields
+// (~1500 tokens) plus an autoVoiceoverScript that can be HEAVY in
+// Devanagari (Hindi) where each character costs ~2x the tokens of English
+// — a 90s Hindi VO can easily reach 1500+ tokens by itself. Realistic
+// worst-case output is ~5.5-7.5K tokens, so we cap at 12000 for safe ~2x
+// headroom. The cap doesn't affect latency — actual generation time
+// scales with tokens produced, not with the cap. The latency win comes
+// from the strict 4200-4500 char copyablePrompt rule baked into the
+// system prompt, which keeps the model from rambling.
 const DEFAULT_MAX_TOKENS = 8192;
-const VIDEO_PROMPTS_MAX_TOKENS = 6000;
+const VIDEO_PROMPTS_MAX_TOKENS = 12000;
 
 function maxTokensForLabel(label: string): number {
   if (label === "generate-video-prompts") return VIDEO_PROMPTS_MAX_TOKENS;
