@@ -20,6 +20,11 @@ export interface EditVideoPromptsRequest {
   existingPart: VideoPromptsResponse;
   /** lastFrameDescription from the previous part — the FIRST shot of the refined part must continue from this frame. */
   previousLastFrame?: string | null;
+  /** Compact text digests of all OTHER already-generated parts (parts 1..N-1, excluding the part being edited),
+in order, so the model has cumulative memory of what was already shown across the project and avoids
+inadvertently breaking continuity beyond just the immediate neighbours.
+ */
+  previousParts?: string[];
   /** One-line description of the FIRST shot of the next part — the refined part's lastFrameDescription must end in a state that allows that next shot to enter seamlessly. Omit when refining the final part. */
   nextFirstShot?: string | null;
   voiceoverLanguage?: string | null;

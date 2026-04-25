@@ -16,6 +16,12 @@ export interface VideoPromptsRequest {
   totalParts: number;
   /** lastFrameDescription from the previous part for continuation */
   previousLastFrame?: string;
+  /** One compact text digest per already-generated part (parts 1..N-1), in order.
+Each entry should summarize that part's shots, voiceover script, effects,
+and last frame so the model has full memory of what was already shown
+and can avoid repetition / maintain cumulative continuity.
+ */
+  previousParts?: string[];
   /** "english" | "hindi" | "hinglish" — when set, Claude auto-writes a part-specific VO */
   voiceoverLanguage?: string | null;
   voiceoverTone?: string | null;

@@ -32,6 +32,13 @@ function handleError(res: Response, label: string, err: unknown) {
   res.status(500).json({ error: message });
 }
 
+function describePreviousParts(previousParts: string[] | undefined): string {
+  if (!previousParts || previousParts.length === 0) return "";
+  return `\nALREADY-GENERATED PARTS (full memory of what was already shown — do NOT repeat shots, voiceover lines, or signature beats; build on what came before):\n${previousParts
+    .map((p, i) => `--- Part ${i + 1} digest ---\n${p}`)
+    .join("\n\n")}\n`;
+}
+
 function describeStory(story: {
   title: string;
   synopsis: string;
@@ -152,6 +159,7 @@ router.post(
       part,
       totalParts,
       previousLastFrame,
+      previousParts,
       voiceoverLanguage,
       voiceoverTone,
       voiceoverScript,
@@ -192,7 +200,7 @@ router.post(
 
 STORY (full context for all parts):
 ${describeStory(story)}
-
+${describePreviousParts(previousParts)}
 THIS PART:
 - Part number: ${part} of ${totalParts}
 - Duration of this part: ${duration} seconds (build shots whose timestamps sum to roughly this duration)
@@ -235,6 +243,7 @@ router.post(
       instruction,
       existingPart,
       previousLastFrame,
+      previousParts,
       nextFirstShot,
       voiceoverLanguage,
       voiceoverTone,
@@ -276,7 +285,7 @@ router.post(
 
 STORY (full context for all parts):
 ${describeStory(story)}
-
+${describePreviousParts(previousParts)}
 THIS PART:
 - Part number: ${part} of ${totalParts}
 - Duration of this part: ${duration} seconds (keep the refined part roughly the same total duration)

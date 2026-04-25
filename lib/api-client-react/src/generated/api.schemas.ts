@@ -120,6 +120,12 @@ export interface VideoPromptsRequest {
   totalParts: number;
   /** lastFrameDescription from the previous part for continuation */
   previousLastFrame?: string;
+  /** One compact text digest per already-generated part (parts 1..N-1), in order.
+Each entry should summarize that part's shots, voiceover script, effects,
+and last frame so the model has full memory of what was already shown
+and can avoid repetition / maintain cumulative continuity.
+ */
+  previousParts?: string[];
   /** "english" | "hindi" | "hinglish" — when set, Claude auto-writes a part-specific VO */
   voiceoverLanguage?: string | null;
   voiceoverTone?: string | null;
@@ -142,6 +148,11 @@ export interface EditVideoPromptsRequest {
   existingPart: VideoPromptsResponse;
   /** lastFrameDescription from the previous part — the FIRST shot of the refined part must continue from this frame. */
   previousLastFrame?: string | null;
+  /** Compact text digests of all OTHER already-generated parts (parts 1..N-1, excluding the part being edited),
+in order, so the model has cumulative memory of what was already shown across the project and avoids
+inadvertently breaking continuity beyond just the immediate neighbours.
+ */
+  previousParts?: string[];
   /** One-line description of the FIRST shot of the next part — the refined part's lastFrameDescription must end in a state that allows that next shot to enter seamlessly. Omit when refining the final part. */
   nextFirstShot?: string | null;
   voiceoverLanguage?: string | null;

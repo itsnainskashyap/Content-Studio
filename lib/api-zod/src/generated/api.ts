@@ -182,6 +182,12 @@ export const GenerateVideoPromptsBody = zod.object({
     .string()
     .optional()
     .describe("lastFrameDescription from the previous part for continuation"),
+  previousParts: zod
+    .array(zod.string())
+    .optional()
+    .describe(
+      "One compact text digest per already-generated part (parts 1..N-1), in order.\nEach entry should summarize that part's shots, voiceover script, effects,\nand last frame so the model has full memory of what was already shown\nand can avoid repetition \/ maintain cumulative continuity.\n",
+    ),
   voiceoverLanguage: zod
     .string()
     .nullish()
@@ -352,6 +358,12 @@ export const EditVideoPromptsBody = zod.object({
     .nullish()
     .describe(
       "lastFrameDescription from the previous part — the FIRST shot of the refined part must continue from this frame.",
+    ),
+  previousParts: zod
+    .array(zod.string())
+    .optional()
+    .describe(
+      "Compact text digests of all OTHER already-generated parts (parts 1..N-1, excluding the part being edited),\nin order, so the model has cumulative memory of what was already shown across the project and avoids\ninadvertently breaking continuity beyond just the immediate neighbours.\n",
     ),
   nextFirstShot: zod
     .string()

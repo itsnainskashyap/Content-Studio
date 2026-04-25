@@ -473,6 +473,15 @@ components:
         previousLastFrame:
           type: string
           description: lastFrameDescription from the previous part for continuation
+        previousParts:
+          type: array
+          items:
+            type: string
+          description: |
+            One compact text digest per already-generated part (parts 1..N-1), in order.
+            Each entry should summarize that part's shots, voiceover script, effects,
+            and last frame so the model has full memory of what was already shown
+            and can avoid repetition / maintain cumulative continuity.
         voiceoverLanguage:
           type: string
           nullable: true
@@ -524,6 +533,14 @@ components:
           type: string
           nullable: true
           description: lastFrameDescription from the previous part — the FIRST shot of the refined part must continue from this frame.
+        previousParts:
+          type: array
+          items:
+            type: string
+          description: |
+            Compact text digests of all OTHER already-generated parts (parts 1..N-1, excluding the part being edited),
+            in order, so the model has cumulative memory of what was already shown across the project and avoids
+            inadvertently breaking continuity beyond just the immediate neighbours.
         nextFirstShot:
           type: string
           nullable: true

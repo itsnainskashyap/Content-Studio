@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { editVideoPrompts } from "@workspace/api-client-react";
+import { buildPreviousPartDigests } from "@/lib/part-digest";
 import {
   storage,
   type Project,
@@ -687,6 +688,9 @@ function PartCard({
         instruction,
         existingPart: part,
         previousLastFrame: previousPart?.lastFrameDescription ?? null,
+        previousParts: buildPreviousPartDigests(
+          parts.filter((p) => p.partNumber !== part.partNumber),
+        ),
         nextFirstShot: nextPart?.shots[0]?.description ?? null,
         voiceoverLanguage:
           voLanguage === "none" ? null : voLanguage,

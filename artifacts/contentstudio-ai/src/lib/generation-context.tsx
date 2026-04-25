@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { generateVideoPrompts } from "@workspace/api-client-react";
+import { buildPreviousPartDigests } from "./part-digest";
 import { storage, type Project, type ProjectPart, type VoiceoverLanguage } from "@/lib/storage";
 
 export interface GenerationConfig {
@@ -112,6 +113,7 @@ export function GenerationProvider({ children }: { children: ReactNode }) {
             part: partNumber,
             totalParts: config.partsCount,
             previousLastFrame: job.previousLastFrame,
+            previousParts: buildPreviousPartDigests(job.parts),
             voiceoverLanguage:
               config.voiceoverLanguage === "none" ? null : config.voiceoverLanguage,
             voiceoverTone:
