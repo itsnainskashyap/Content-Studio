@@ -30,7 +30,7 @@ import {
   type VoiceoverLanguage,
 } from "@/lib/storage";
 import { useApiCall, mutationCaller } from "@/lib/api-call";
-import { useGeneration } from "@/lib/generation-context";
+import { useGeneration } from "@/lib/use-generation";
 import { ErrorCard } from "@/components/error-card";
 import { CopyButton } from "@/components/copy-button";
 import { InlinePrompts } from "@/components/inline-prompts";

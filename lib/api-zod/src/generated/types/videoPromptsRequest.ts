@@ -16,9 +16,9 @@ export interface VideoPromptsRequest {
    */
   style: string;
   /**
-   * Duration of this single part in seconds
+   * Duration of this single part in seconds (a "part" is one chunk of a longer multi-part video, so it can be much longer than a single Seedance clip)
    * @minimum 1
-   * @maximum 60
+   * @maximum 3600
    */
   duration: number;
   /**

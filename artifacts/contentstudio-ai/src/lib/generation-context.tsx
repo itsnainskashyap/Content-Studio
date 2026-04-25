@@ -1,51 +1,13 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { generateVideoPrompts } from "@workspace/api-client-react";
 import { buildPreviousPartDigests } from "./part-digest";
-import { storage, type Project, type ProjectPart, type VoiceoverLanguage } from "@/lib/storage";
-
-export interface GenerationConfig {
-  projectId: string;
-  story: NonNullable<Project["story"]>;
-  style: string;
-  partsCount: number;
-  partDuration: number;
-  voiceoverLanguage: VoiceoverLanguage;
-  voiceoverTone: string;
-  bgm: { name: string; tempo: string; instruments: string[] } | null;
-}
-
-export interface GenerationJob {
-  projectId: string;
-  // running       = currently generating ONE part
-  // awaiting_next = the previous part finished; user must click "Generate next prompt"
-  // done          = all parts generated
-  status: "running" | "awaiting_next" | "done" | "error" | "cancelled";
-  total: number;
-  current: number; // number of parts completed so far
-  parts: ProjectPart[];
-  error: string | null;
-  config: GenerationConfig;
-  startedAt: number;
-  previousLastFrame?: string;
-}
-
-interface GenerationContextValue {
-  getJob: (projectId: string) => GenerationJob | null;
-  /** Begin a new run and generate the FIRST part only. */
-  startGeneration: (config: GenerationConfig) => void;
-  /** Generate the next single part using the existing job's config. */
-  generateNextPart: (projectId: string) => void;
-  cancel: (projectId: string) => void;
-  clear: (projectId: string) => void;
-  /**
-   * Replace a single part in the in-memory job (after an inline edit).
-   * No-op if there's no job for this project.
-   */
-  replaceJobPart: (projectId: string, replacement: ProjectPart) => void;
-}
-
-const GenerationContext = createContext<GenerationContextValue | null>(null);
+import { storage, type ProjectPart } from "@/lib/storage";
+import {
+  GenerationContext,
+  type GenerationConfig,
+  type GenerationJob,
+} from "./use-generation";
 
 // Per-part client timeout. The server can take 60-150s for a richly detailed
 // part (especially when voiceover + BGM are included and the model produces
@@ -288,8 +250,3 @@ export function GenerationProvider({ children }: { children: ReactNode }) {
   );
 }
 
-export function useGeneration(): GenerationContextValue {
-  const ctx = useContext(GenerationContext);
-  if (!ctx) throw new Error("useGeneration must be used inside GenerationProvider");
-  return ctx;
-}

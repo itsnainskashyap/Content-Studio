@@ -169,7 +169,7 @@ export const ContinueStoryResponse = zod.object({
  */
 export const generateVideoPromptsBodyStyleMax = 120;
 
-export const generateVideoPromptsBodyDurationMax = 60;
+export const generateVideoPromptsBodyDurationMax = 3600;
 
 export const generateVideoPromptsBodyPartMax = 240;
 
@@ -224,7 +224,9 @@ export const GenerateVideoPromptsBody = zod.object({
     .number()
     .min(1)
     .max(generateVideoPromptsBodyDurationMax)
-    .describe("Duration of this single part in seconds"),
+    .describe(
+      'Duration of this single part in seconds (a \"part\" is one chunk of a longer multi-part video, so it can be much longer than a single Seedance clip)',
+    ),
   part: zod.number().min(1).max(generateVideoPromptsBodyPartMax),
   totalParts: zod.number().min(1).max(generateVideoPromptsBodyTotalPartsMax),
   previousLastFrame: zod
@@ -322,6 +324,14 @@ export const GenerateVideoPromptsResponse = zod.object({
 /**
  * @summary Refine an existing video part with a writer instruction while preserving continuity to surrounding parts
  */
+export const editVideoPromptsBodyStyleMax = 120;
+
+export const editVideoPromptsBodyDurationMax = 3600;
+
+export const editVideoPromptsBodyPartMax = 240;
+
+export const editVideoPromptsBodyTotalPartsMax = 240;
+
 export const EditVideoPromptsBody = zod.object({
   story: zod.object({
     title: zod.string(),
@@ -352,10 +362,16 @@ export const EditVideoPromptsBody = zod.object({
         "A short 2-3 sentence chat-style note from the AI explaining the most important creative choices in this story (the hook, the visual signature, the emotional arc, or what just changed if this was a refinement). Optional — older clients will fall back to a generic message.",
       ),
   }),
-  style: zod.string(),
-  duration: zod.number().describe("Duration of this single part in seconds"),
-  part: zod.number(),
-  totalParts: zod.number(),
+  style: zod.string().min(1).max(editVideoPromptsBodyStyleMax),
+  duration: zod
+    .number()
+    .min(1)
+    .max(editVideoPromptsBodyDurationMax)
+    .describe(
+      "Duration of this single part in seconds (matches the per-part duration the original part was generated with)",
+    ),
+  part: zod.number().min(1).max(editVideoPromptsBodyPartMax),
+  totalParts: zod.number().min(1).max(editVideoPromptsBodyTotalPartsMax),
   instruction: zod
     .string()
     .describe(

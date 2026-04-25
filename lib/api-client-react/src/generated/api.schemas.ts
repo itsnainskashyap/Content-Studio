@@ -172,9 +172,9 @@ export interface VideoPromptsRequest {
    */
   style: string;
   /**
-   * Duration of this single part in seconds
+   * Duration of this single part in seconds (a "part" is one chunk of a longer multi-part video, so it can be much longer than a single Seedance clip)
    * @minimum 1
-   * @maximum 60
+   * @maximum 3600
    */
   duration: number;
   /**
@@ -217,10 +217,26 @@ and can avoid repetition / maintain cumulative continuity.
 
 export interface EditVideoPromptsRequest {
   story: StoryResponse;
+  /**
+   * @minLength 1
+   * @maxLength 120
+   */
   style: string;
-  /** Duration of this single part in seconds */
+  /**
+   * Duration of this single part in seconds (matches the per-part duration the original part was generated with)
+   * @minimum 1
+   * @maximum 3600
+   */
   duration: number;
+  /**
+   * @minimum 1
+   * @maximum 240
+   */
   part: number;
+  /**
+   * @minimum 1
+   * @maximum 240
+   */
   totalParts: number;
   /** The writer's edit instruction (e.g. "make shot 3 slower", "swap the signature effect to a whip pan", "drop the third shot entirely") */
   instruction: string;

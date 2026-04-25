@@ -24,7 +24,7 @@ import {
   type ProjectPart,
   type VoiceoverLanguage,
 } from "@/lib/storage";
-import { useGeneration } from "@/lib/generation-context";
+import { useGeneration } from "@/lib/use-generation";
 import { ErrorCard } from "@/components/error-card";
 import { CopyButton } from "@/components/copy-button";
 
