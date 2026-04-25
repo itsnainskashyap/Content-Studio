@@ -206,6 +206,216 @@ export const storage = {
   },
 };
 
+// ----------------------------------------------------------------------------
+// Backup / restore
+// ----------------------------------------------------------------------------
+
+export const EXPORT_FILE_TYPE = "contentstudio-ai-export";
+export const EXPORT_FILE_VERSION = 1;
+
+export interface ProjectExportFile {
+  type: typeof EXPORT_FILE_TYPE;
+  version: number;
+  exportedAt: string;
+  projects: Project[];
+}
+
+export interface ImportConflict {
+  id: string;
+  incoming: Project;
+  existing: Project;
+}
+
+export interface ImportPreview {
+  fresh: Project[];
+  conflicts: ImportConflict[];
+  totalIncoming: number;
+}
+
+export type ConflictResolution = "skip" | "replace" | "duplicate";
+
+export class ImportParseError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ImportParseError";
+  }
+}
+
+function isProjectShape(value: unknown): value is Project {
+  if (!value || typeof value !== "object") return false;
+  const v = value as Record<string, unknown>;
+  return (
+    typeof v.id === "string" &&
+    typeof v.title === "string" &&
+    typeof v.brief === "string" &&
+    typeof v.genre === "string" &&
+    Array.isArray(v.parts) &&
+    typeof v.createdAt === "string" &&
+    typeof v.updatedAt === "string"
+  );
+}
+
+export function buildExportFile(projects: Project[]): ProjectExportFile {
+  return {
+    type: EXPORT_FILE_TYPE,
+    version: EXPORT_FILE_VERSION,
+    exportedAt: new Date().toISOString(),
+    projects: projects.map((p) => migrateProject(p)),
+  };
+}
+
+export function parseExportFile(text: string): Project[] {
+  let data: unknown;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    throw new ImportParseError("That file isn't valid JSON.");
+  }
+  if (!data || typeof data !== "object") {
+    throw new ImportParseError("Unrecognised file contents.");
+  }
+  const obj = data as Record<string, unknown>;
+  if (obj.type !== EXPORT_FILE_TYPE) {
+    throw new ImportParseError(
+      "This doesn't look like a ContentStudio export file.",
+    );
+  }
+  if (typeof obj.version !== "number" || obj.version > EXPORT_FILE_VERSION) {
+    throw new ImportParseError(
+      "This export was made by a newer version of ContentStudio.",
+    );
+  }
+  if (!Array.isArray(obj.projects)) {
+    throw new ImportParseError("Export file is missing a projects list.");
+  }
+  const projects: Project[] = [];
+  for (const item of obj.projects) {
+    if (!isProjectShape(item)) {
+      throw new ImportParseError(
+        "One or more projects in this file are malformed.",
+      );
+    }
+    projects.push(migrateProject(item));
+  }
+  return projects;
+}
+
+function downloadJSON(filename: string, payload: unknown): void {
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {
+    type: "application/json",
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function safeFilenamePart(input: string): string {
+  return (
+    input
+      .replace(/[^A-Za-z0-9_\-]+/g, "_")
+      .replace(/^_+|_+$/g, "")
+      .slice(0, 60) || "project"
+  );
+}
+
+export const backup = {
+  exportAll(): number {
+    const projects = storage.getProjects();
+    const file = buildExportFile(projects);
+    const date = new Date().toISOString().slice(0, 10);
+    downloadJSON(`contentstudio-projects-${date}.json`, file);
+    return projects.length;
+  },
+
+  exportOne(id: string): Project | undefined {
+    const project = storage.getProject(id);
+    if (!project) return undefined;
+    const file = buildExportFile([project]);
+    const date = new Date().toISOString().slice(0, 10);
+    downloadJSON(
+      `contentstudio-${safeFilenamePart(project.title)}-${date}.json`,
+      file,
+    );
+    return project;
+  },
+
+  preview(text: string): ImportPreview {
+    const incoming = parseExportFile(text);
+    const existing = storage.getProjects();
+    const existingById = new Map(existing.map((p) => [p.id, p]));
+    const fresh: Project[] = [];
+    const conflicts: ImportConflict[] = [];
+    for (const proj of incoming) {
+      const match = existingById.get(proj.id);
+      if (match) {
+        conflicts.push({ id: proj.id, incoming: proj, existing: match });
+      } else {
+        fresh.push(proj);
+      }
+    }
+    return { fresh, conflicts, totalIncoming: incoming.length };
+  },
+
+  /**
+   * Apply an import after the caller has decided how to resolve conflicts.
+   * - `fresh` projects are added as-is.
+   * - For each conflict, behaviour depends on `resolution`:
+   *     * "skip"      → existing project is kept, incoming dropped
+   *     * "replace"   → incoming overwrites existing (preserving id)
+   *     * "duplicate" → incoming is added with a new id and "(imported)" suffix
+   */
+  apply(
+    preview: ImportPreview,
+    resolution: ConflictResolution,
+  ): { added: number; replaced: number; skipped: number; duplicated: number } {
+    const projects = storage.getProjects();
+    const byId = new Map(projects.map((p) => [p.id, p]));
+    const now = new Date().toISOString();
+    let added = 0;
+    let replaced = 0;
+    let skipped = 0;
+    let duplicated = 0;
+
+    for (const proj of preview.fresh) {
+      byId.set(proj.id, { ...proj, updatedAt: proj.updatedAt || now });
+      added += 1;
+    }
+
+    for (const c of preview.conflicts) {
+      if (resolution === "skip") {
+        skipped += 1;
+        continue;
+      }
+      if (resolution === "replace") {
+        byId.set(c.id, { ...c.incoming, updatedAt: now });
+        replaced += 1;
+        continue;
+      }
+      // duplicate: assign a new id, suffix title
+      const copy: Project = {
+        ...c.incoming,
+        id: newId(),
+        title: `${c.incoming.title} (imported)`,
+        createdAt: now,
+        updatedAt: now,
+      };
+      byId.set(copy.id, copy);
+      duplicated += 1;
+    }
+
+    const merged = Array.from(byId.values()).sort((a, b) =>
+      b.updatedAt.localeCompare(a.updatedAt),
+    );
+    localStorage.setItem(STORAGE_KEYS.PROJECTS, JSON.stringify(merged));
+    return { added, replaced, skipped, duplicated };
+  },
+};
+
 export const STYLES: Array<{
   key: string;
   name: string;

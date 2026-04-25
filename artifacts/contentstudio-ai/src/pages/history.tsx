@@ -3,12 +3,13 @@ import { Link, useLocation } from "wouter";
 import {
   Trash2,
   Copy as CopyIcon,
+  Download,
   FolderOpen,
   Play,
   Search,
 } from "lucide-react";
 import { toast } from "sonner";
-import { storage, type Project } from "@/lib/storage";
+import { storage, backup, type Project } from "@/lib/storage";
 
 type SortKey = "newest" | "oldest" | "most_shots";
 type DateRange = "all" | "today" | "week" | "month";
@@ -95,6 +96,15 @@ export default function History() {
       window.dispatchEvent(new Event("cs:projects-changed"));
       refresh();
       toast.success("Project duplicated");
+    }
+  };
+
+  const exportOne = (p: Project) => {
+    const exported = backup.exportOne(p.id);
+    if (exported) {
+      toast.success("Project exported as JSON");
+    } else {
+      toast.error("Couldn't find that project to export.");
     }
   };
 
@@ -246,6 +256,15 @@ export default function History() {
                     data-testid={`button-duplicate-${p.id}`}
                   >
                     <CopyIcon className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => exportOne(p)}
+                    title="Export as JSON"
+                    className="p-1.5 rounded-md border border-border hover:border-primary hover:text-primary transition-colors"
+                    data-testid={`button-export-${p.id}`}
+                  >
+                    <Download className="w-3.5 h-3.5" />
                   </button>
                   <button
                     type="button"
