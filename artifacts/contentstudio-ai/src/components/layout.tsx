@@ -7,15 +7,25 @@ import {
   Mic,
   History as HistoryIcon,
   Settings as SettingsIcon,
-  Zap,
+  LogOut,
   Plus,
 } from "lucide-react";
 import { ReactNode, useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { storage, type Project } from "@/lib/storage";
+import { useAuth } from "@/lib/auth";
+import { BrandLogo } from "@/components/brand-logo";
 
 interface LayoutProps {
   children: ReactNode;
+}
+
+function useAuthSafe() {
+  try {
+    return useAuth();
+  } catch {
+    return null;
+  }
 }
 
 const ROUTE_LABELS: Record<string, string> = {
@@ -97,6 +107,13 @@ export function Layout({ children }: LayoutProps) {
   const [location] = useLocation();
   const [recents, setRecents] = useState<Project[]>([]);
   const [currentProject, setCurrentProject] = useState<Project | null>(null);
+  const auth = useAuthSafe();
+  const [, navigate] = useLocation();
+  const user = auth?.user ?? null;
+  const signOut = () => {
+    auth?.signOut();
+    navigate("/");
+  };
 
   useEffect(() => {
     const refresh = () => {
@@ -131,16 +148,13 @@ export function Layout({ children }: LayoutProps) {
 
   const sidebar = (
     <>
-      <div className="h-16 flex items-center px-6 border-b border-border">
+      <div className="h-16 flex items-center px-5 border-b border-border">
         <Link
           href="/"
-          className="flex items-center gap-2 font-display text-2xl tracking-widest text-foreground"
+          className="flex items-center"
           data-testid="link-home"
         >
-          <Zap className="w-5 h-5 text-primary" />
-          <span>
-            ContentStudio <span className="text-primary">AI</span>
-          </span>
+          <BrandLogo variant="wide" height={32} className="max-w-full" />
         </Link>
       </div>
       <nav className="flex-1 overflow-y-auto py-4">
@@ -262,7 +276,15 @@ export function Layout({ children }: LayoutProps) {
           ))}
         </ul>
       </nav>
-      <div className="border-t border-border p-3">
+      <div className="border-t border-border p-3 space-y-1">
+        {user && (
+          <div
+            className="px-3 py-2 text-[10px] font-mono uppercase tracking-widest text-muted-foreground/80 truncate"
+            data-testid="sidebar-user-email"
+          >
+            {user.name || user.email}
+          </div>
+        )}
         <Link
           href="/settings"
           className={cn(
@@ -276,6 +298,17 @@ export function Layout({ children }: LayoutProps) {
           <SettingsIcon className="w-4 h-4" />
           Settings
         </Link>
+        {user && (
+          <button
+            type="button"
+            onClick={signOut}
+            className="w-full flex items-center gap-3 px-3 py-2 text-sm rounded-md text-muted-foreground hover:text-red-400 hover:bg-secondary/50 transition-colors"
+            data-testid="nav-signout"
+          >
+            <LogOut className="w-4 h-4" />
+            Sign out
+          </button>
+        )}
       </div>
     </>
   );

@@ -1,12 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Loader2,
-  Sparkles,
+  Play,
   Download,
   ArrowDownToLine,
   Check,
-  Play,
-  Star,
+  Diamond,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useGenerateVideoPrompts } from "@workspace/api-client-react";
@@ -268,7 +267,7 @@ export default function PromptGenerator() {
                 </>
               ) : (
                 <>
-                  <Sparkles className="w-4 h-4" /> Generate prompts
+                  <Play className="w-4 h-4" /> Generate prompts
                 </>
               )}
             </button>
@@ -462,7 +461,7 @@ function PartCard({
                     </span>
                     {s.isSignature && (
                       <span className="ml-2 inline-flex items-center gap-1 text-[10px] font-mono uppercase tracking-widest text-black bg-primary px-1.5 py-0.5 rounded">
-                        <Star className="w-3 h-3" /> Signature
+                        <Diamond className="w-3 h-3" /> Signature
                       </span>
                     )}
                   </div>

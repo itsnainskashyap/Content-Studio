@@ -4,7 +4,7 @@ import {
   ArrowRight,
   BookOpen,
   Video,
-  Sparkles,
+  Play,
   Mic,
   LayoutTemplate,
   Volume2,
@@ -235,7 +235,7 @@ export default function Dashboard() {
 
       {recent.length === 0 ? (
         <div className="mt-4 border border-border rounded-md p-10 text-center text-muted-foreground">
-          <Sparkles className="w-8 h-8 mx-auto mb-3 opacity-40" />
+          <Play className="w-8 h-8 mx-auto mb-3 opacity-40" />
           <p className="text-sm font-mono uppercase tracking-widest">
             No projects yet
           </p>

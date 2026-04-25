@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Loader2,
-  Sparkles,
-  Star,
+  Play,
+  Diamond,
   ArrowDownToLine,
   Volume2,
   Music as MusicIcon,
   X,
   StopCircle,
+  ClipboardCopy,
+  Check,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -177,8 +179,7 @@ export function InlinePrompts({
     toast.message("Generation stopped");
   };
 
-  const downloadAll = () => {
-    if (parts.length === 0) return;
+  const buildAllPartsText = (): string => {
     const lines: string[] = [];
     lines.push(`# ${project.title}`);
     if (project.story) {
@@ -200,7 +201,12 @@ export function InlinePrompts({
       lines.push(``);
       lines.push(`Last frame: ${p.lastFrameDescription}`);
     });
-    const blob = new Blob([lines.join("\n")], { type: "text/plain" });
+    return lines.join("\n");
+  };
+
+  const downloadAll = () => {
+    if (parts.length === 0) return;
+    const blob = new Blob([buildAllPartsText()], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -209,6 +215,35 @@ export function InlinePrompts({
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+  };
+
+  const [copyAllState, setCopyAllState] = useState<"idle" | "copied" | "error">(
+    "idle",
+  );
+  const copyAllParts = async () => {
+    if (parts.length === 0) return;
+    const text = buildAllPartsText();
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+      }
+      setCopyAllState("copied");
+      toast.success(`Copied all ${parts.length} parts to clipboard`);
+      window.setTimeout(() => setCopyAllState("idle"), 2200);
+    } catch {
+      setCopyAllState("error");
+      toast.error("Could not copy to clipboard");
+      window.setTimeout(() => setCopyAllState("idle"), 2200);
+    }
   };
 
   return (
@@ -422,7 +457,7 @@ export function InlinePrompts({
             className="inline-flex items-center gap-2 px-5 py-3 rounded-md bg-primary text-black font-mono text-xs uppercase tracking-widest hover:bg-[#D4EB3A] transition-colors"
             data-testid="button-generate-prompts-inline"
           >
-            <Sparkles className="w-4 h-4" />{" "}
+            <Play className="w-4 h-4" />{" "}
             {parts.length > 0 ? "Regenerate" : `Generate ${partsCount} prompt${partsCount === 1 ? "" : "s"}`}
           </button>
         )}
@@ -447,14 +482,38 @@ export function InlinePrompts({
           </>
         )}
         {parts.length > 0 && !generating && (
-          <button
-            type="button"
-            onClick={downloadAll}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-md border border-border font-mono text-xs uppercase tracking-widest hover:border-primary hover:text-primary transition-colors"
-            data-testid="button-download-all-inline"
-          >
-            <ArrowDownToLine className="w-4 h-4" /> Download .txt
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={copyAllParts}
+              className={`relative inline-flex items-center gap-2 px-5 py-3 rounded-md font-mono text-xs uppercase tracking-widest transition-all border-2 ${
+                copyAllState === "copied"
+                  ? "bg-green-500 border-green-500 text-black"
+                  : "bg-primary border-primary text-black hover:bg-[#D4EB3A] hover:shadow-[0_8px_24px_-8px_rgba(232,255,71,0.6)] hover:-translate-y-0.5"
+              }`}
+              data-testid="button-copy-all-parts"
+              aria-label="Copy all parts to clipboard"
+            >
+              {copyAllState === "copied" ? (
+                <>
+                  <Check className="w-4 h-4" /> Copied all {parts.length} parts!
+                </>
+              ) : (
+                <>
+                  <ClipboardCopy className="w-4 h-4" /> Copy ALL {parts.length}{" "}
+                  part{parts.length === 1 ? "" : "s"}
+                </>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={downloadAll}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-md border border-border font-mono text-xs uppercase tracking-widest hover:border-primary hover:text-primary transition-colors"
+              data-testid="button-download-all-inline"
+            >
+              <ArrowDownToLine className="w-4 h-4" /> Download .txt
+            </button>
+          </>
         )}
       </div>
 
@@ -544,7 +603,7 @@ function PartCard({
           )}
           {signature && (
             <div className="mt-2 inline-flex items-center gap-1 text-[10px] font-mono uppercase tracking-widest text-black bg-primary px-2 py-0.5 rounded">
-              <Star className="w-3 h-3" /> Signature: {signature.name}
+              <Diamond className="w-3 h-3" /> Signature: {signature.name}
             </div>
           )}
         </div>
@@ -644,7 +703,7 @@ function PartCard({
                     </span>
                     {s.isSignature && (
                       <span className="inline-flex items-center gap-1 text-[10px] font-mono uppercase tracking-widest text-black bg-primary px-1.5 py-0.5 rounded">
-                        <Star className="w-2.5 h-2.5" />
+                        <Diamond className="w-2.5 h-2.5" />
                       </span>
                     )}
                   </div>

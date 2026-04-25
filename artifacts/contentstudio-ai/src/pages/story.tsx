@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import {
   Loader2,
-  Sparkles,
+  Play,
   ArrowRight,
   Volume2,
   CheckCircle2,
@@ -11,7 +11,7 @@ import {
   Lock,
   Unlock,
   User,
-  Bot,
+  MessageCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -543,7 +543,7 @@ export default function StoryBuilder() {
               <>Pick a style</>
             ) : (
               <>
-                <Sparkles className="w-4 h-4" /> Start the story
+                <Play className="w-4 h-4" /> Start the story
               </>
             )}
           </button>
@@ -601,7 +601,7 @@ export default function StoryBuilder() {
       {messages.length > 0 && (
         <section className="mt-6 border border-border rounded-md bg-card overflow-hidden">
           <div className="px-4 py-3 border-b border-border flex items-center gap-2">
-            <Bot className="w-4 h-4 text-primary" />
+            <MessageCircle className="w-4 h-4 text-primary" />
             <div className="text-[10px] font-mono uppercase tracking-widest text-primary">
               Story Chat
             </div>
@@ -765,7 +765,7 @@ function AssistantBubble({
   return (
     <div className="flex items-start gap-3" data-testid="chat-bubble-assistant">
       <div className="w-7 h-7 shrink-0 rounded-full bg-primary/15 border border-primary/40 flex items-center justify-center">
-        <Bot className="w-3.5 h-3.5 text-primary" />
+        <MessageCircle className="w-3.5 h-3.5 text-primary" />
       </div>
       <div className="flex-1 space-y-3">
         <div className="rounded-md rounded-tl-sm bg-background border border-border px-3 py-2 text-sm">

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Loader2, Music, Sparkles } from "lucide-react";
+import { Loader2, Music, Play } from "lucide-react";
 import { toast } from "sonner";
 import { useGenerateMusicBrief } from "@workspace/api-client-react";
 import { storage, type Project } from "@/lib/storage";
@@ -231,7 +231,7 @@ export default function MusicGenerator() {
               </>
             ) : (
               <>
-                <Sparkles className="w-4 h-4" /> Generate music brief
+                <Play className="w-4 h-4" /> Generate music brief
               </>
             )}
           </button>

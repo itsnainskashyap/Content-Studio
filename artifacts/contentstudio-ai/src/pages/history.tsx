@@ -4,7 +4,7 @@ import {
   Trash2,
   Copy as CopyIcon,
   FolderOpen,
-  Sparkles,
+  Play,
   Search,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -122,7 +122,7 @@ export default function History() {
           className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-primary text-black font-mono text-xs uppercase tracking-widest hover:bg-[#D4EB3A] transition-colors"
           data-testid="button-new-from-history"
         >
-          <Sparkles className="w-4 h-4" /> New project
+          <Play className="w-4 h-4" /> New project
         </Link>
       </div>
 

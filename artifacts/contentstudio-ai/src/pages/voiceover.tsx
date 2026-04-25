@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Loader2, Sparkles, Mic } from "lucide-react";
+import { Loader2, Play, Mic } from "lucide-react";
 import { toast } from "sonner";
 import { useGenerateVoiceover } from "@workspace/api-client-react";
 import {
@@ -279,7 +279,7 @@ export default function VoiceoverGenerator() {
             </>
           ) : (
             <>
-              <Sparkles className="w-4 h-4" /> Generate voiceover
+              <Play className="w-4 h-4" /> Generate voiceover
             </>
           )}
         </button>
