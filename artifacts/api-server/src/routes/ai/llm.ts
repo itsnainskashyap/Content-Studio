@@ -1,7 +1,7 @@
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { logger } from "../../lib/logger";
 
-const MODEL = "claude-opus-4-5";
+const MODEL = "claude-sonnet-4-6";
 const MAX_TOKENS = 4096;
 
 export async function generateJson<T>(args: {
