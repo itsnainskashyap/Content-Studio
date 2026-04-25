@@ -28,6 +28,7 @@ import {
   type VoiceoverLanguage,
 } from "@/lib/storage";
 import { useApiCall, mutationCaller } from "@/lib/api-call";
+import { useGeneration } from "@/lib/generation-context";
 import { ErrorCard } from "@/components/error-card";
 import { CopyButton } from "@/components/copy-button";
 import { InlinePrompts } from "@/components/inline-prompts";
@@ -97,6 +98,7 @@ export default function StoryBuilder() {
   const continueCall = useApiCall(
     mutationCaller(continueStoryMut.mutateAsync),
   );
+  const generation = useGeneration();
 
   const totalDurationSeconds = useMemo(() => {
     const preset = DURATIONS.find((d) => d.key === durationKey);
@@ -144,6 +146,10 @@ export default function StoryBuilder() {
         setCustomSec(sec % 60);
       }
       if (current.story) {
+        const restoredCommentary =
+          current.story.commentary && current.story.commentary.trim().length > 0
+            ? current.story.commentary
+            : "Here's your story.";
         setMessages([
           {
             id: newMsgId(),
@@ -153,14 +159,32 @@ export default function StoryBuilder() {
           {
             id: newMsgId(),
             role: "assistant",
-            text: "Here's your story.",
+            text: restoredCommentary,
             story: current.story,
           },
         ]);
-        // If parts already exist, treat as finalized
-        if (current.parts.length > 0) {
+        // Restore the "finalized → generating prompts" state on remount.
+        // Trigger if EITHER:
+        //   (a) parts have already been saved to the project, OR
+        //   (b) a generation job is still live in the GenerationContext for
+        //       this project (covers the case where the user finalized,
+        //       navigated away while the very first part was still
+        //       generating, then came back — parts.length is still 0 but
+        //       the job is alive and we must show the panel so they can
+        //       see progress / cancel / etc.)
+        const liveJob = generation.getJob(current.id);
+        const hasLiveJob =
+          !!liveJob &&
+          (liveJob.status === "running" ||
+            liveJob.status === "awaiting_next" ||
+            liveJob.status === "done" ||
+            liveJob.status === "error");
+        if (current.parts.length > 0 || hasLiveJob) {
           setFinalized(true);
           setShowPrompts(true);
+          // Don't auto-start a fresh job — InlinePrompts will recover the
+          // existing one (or just display the saved parts).
+          setAutoStartGen(false);
         }
       }
     } else if (prefill) {
@@ -252,12 +276,16 @@ export default function StoryBuilder() {
       voiceoverLanguage: voLanguage,
     });
     if (result) {
+      const note =
+        result.commentary && result.commentary.trim().length > 0
+          ? `${result.commentary}\n\nRead it through, then send any tweaks — "make act 2 darker", "add a twist ending", "change the protagonist to a woman" — and I'll revise. Hit Finalize when it feels right.`
+          : "Here's your story. Read it through, then send any tweaks — \"make act 2 darker\", \"add a twist ending\", \"change the protagonist to a woman\", etc. When you're happy, hit Finalize.";
       setMessages((m) => [
         ...m,
         {
           id: newMsgId(),
           role: "assistant",
-          text: "Here's your story. Read it through, then send any tweaks — \"make act 2 darker\", \"add a twist ending\", \"change the protagonist to a woman\", etc. When you're happy, hit Finalize.",
+          text: note,
           story: result,
         },
       ]);
@@ -284,12 +312,16 @@ export default function StoryBuilder() {
       direction: text,
     });
     if (result) {
+      const note =
+        result.commentary && result.commentary.trim().length > 0
+          ? result.commentary
+          : "Updated. Anything else?";
       setMessages((m) => [
         ...m,
         {
           id: newMsgId(),
           role: "assistant",
-          text: "Updated. Anything else?",
+          text: note,
           story: result,
         },
       ]);

@@ -17,4 +17,6 @@ export interface StoryResponse {
   /** List of hex color strings, e.g. ["#1a1a1a", "#E8FF47"] */
   colorPalette: string[];
   musicSuggestion: string;
+  /** A short 2-3 sentence chat-style note from the AI explaining the most important creative choices in this story (the hook, the visual signature, the emotional arc, or what just changed if this was a refinement). Optional — older clients will fall back to a generic message. */
+  commentary?: string;
 }

@@ -67,6 +67,12 @@ export const GenerateStoryResponse = zod.object({
     .array(zod.string())
     .describe('List of hex color strings, e.g. [\"#1a1a1a\", \"#E8FF47\"]'),
   musicSuggestion: zod.string(),
+  commentary: zod
+    .string()
+    .optional()
+    .describe(
+      "A short 2-3 sentence chat-style note from the AI explaining the most important creative choices in this story (the hook, the visual signature, the emotional arc, or what just changed if this was a refinement). Optional — older clients will fall back to a generic message.",
+    ),
 });
 
 /**
@@ -95,6 +101,12 @@ export const ContinueStoryBody = zod.object({
       .array(zod.string())
       .describe('List of hex color strings, e.g. [\"#1a1a1a\", \"#E8FF47\"]'),
     musicSuggestion: zod.string(),
+    commentary: zod
+      .string()
+      .optional()
+      .describe(
+        "A short 2-3 sentence chat-style note from the AI explaining the most important creative choices in this story (the hook, the visual signature, the emotional arc, or what just changed if this was a refinement). Optional — older clients will fall back to a generic message.",
+      ),
   }),
   direction: zod.string(),
 });
@@ -121,6 +133,12 @@ export const ContinueStoryResponse = zod.object({
     .array(zod.string())
     .describe('List of hex color strings, e.g. [\"#1a1a1a\", \"#E8FF47\"]'),
   musicSuggestion: zod.string(),
+  commentary: zod
+    .string()
+    .optional()
+    .describe(
+      "A short 2-3 sentence chat-style note from the AI explaining the most important creative choices in this story (the hook, the visual signature, the emotional arc, or what just changed if this was a refinement). Optional — older clients will fall back to a generic message.",
+    ),
 });
 
 /**
@@ -149,6 +167,12 @@ export const GenerateVideoPromptsBody = zod.object({
       .array(zod.string())
       .describe('List of hex color strings, e.g. [\"#1a1a1a\", \"#E8FF47\"]'),
     musicSuggestion: zod.string(),
+    commentary: zod
+      .string()
+      .optional()
+      .describe(
+        "A short 2-3 sentence chat-style note from the AI explaining the most important creative choices in this story (the hook, the visual signature, the emotional arc, or what just changed if this was a refinement). Optional — older clients will fall back to a generic message.",
+      ),
   }),
   style: zod.string(),
   duration: zod.number().describe("Duration of this single part in seconds"),
@@ -255,6 +279,12 @@ export const GenerateMusicBriefBody = zod.object({
       .array(zod.string())
       .describe('List of hex color strings, e.g. [\"#1a1a1a\", \"#E8FF47\"]'),
     musicSuggestion: zod.string(),
+    commentary: zod
+      .string()
+      .optional()
+      .describe(
+        "A short 2-3 sentence chat-style note from the AI explaining the most important creative choices in this story (the hook, the visual signature, the emotional arc, or what just changed if this was a refinement). Optional — older clients will fall back to a generic message.",
+      ),
   }),
   style: zod.string(),
   mood: zod.string(),
@@ -311,6 +341,12 @@ export const GenerateVoiceoverBody = zod.object({
       .array(zod.string())
       .describe('List of hex color strings, e.g. [\"#1a1a1a\", \"#E8FF47\"]'),
     musicSuggestion: zod.string(),
+    commentary: zod
+      .string()
+      .optional()
+      .describe(
+        "A short 2-3 sentence chat-style note from the AI explaining the most important creative choices in this story (the hook, the visual signature, the emotional arc, or what just changed if this was a refinement). Optional — older clients will fall back to a generic message.",
+      ),
   }),
   style: zod.string().optional(),
   language: zod.string(),
