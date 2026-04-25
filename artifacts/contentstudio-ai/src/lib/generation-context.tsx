@@ -34,7 +34,7 @@ interface GenerationContextValue {
 
 const GenerationContext = createContext<GenerationContextValue | null>(null);
 
-const TIMEOUT_MS = 90_000;
+const TIMEOUT_MS = 60_000;
 
 function normalizeError(err: unknown): string {
   if (err && typeof err === "object" && "message" in err) {
