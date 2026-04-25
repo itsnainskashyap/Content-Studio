@@ -12,6 +12,8 @@ import {
   Unlock,
   User,
   MessageCircle,
+  Eye,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -810,6 +812,25 @@ function AssistantBubble({
 }
 
 function StoryCard({ story }: { story: StoryResponse }) {
+  const [viewActNumber, setViewActNumber] = useState<number | null>(null);
+  const viewedAct = useMemo(
+    () =>
+      viewActNumber !== null
+        ? story.acts.find((a) => a.actNumber === viewActNumber) ?? null
+        : null,
+    [viewActNumber, story.acts],
+  );
+
+  // Close on Escape
+  useEffect(() => {
+    if (viewActNumber === null) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setViewActNumber(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [viewActNumber]);
+
   return (
     <div
       className="rounded-md border border-border bg-background overflow-hidden"
@@ -850,7 +871,7 @@ function StoryCard({ story }: { story: StoryResponse }) {
           {story.acts.map((act) => (
             <div
               key={act.actNumber}
-              className="min-w-[220px] max-w-[280px] border border-border rounded-md p-3 bg-card flex-shrink-0"
+              className="min-w-[220px] max-w-[280px] border border-border rounded-md p-3 bg-card flex-shrink-0 flex flex-col"
               data-testid={`act-${act.actNumber}`}
             >
               <div className="text-[10px] font-mono uppercase tracking-widest text-primary">
@@ -869,6 +890,18 @@ function StoryCard({ story }: { story: StoryResponse }) {
                 <p className="text-[11px] text-foreground mt-1 line-clamp-2">
                   {act.keyMoment}
                 </p>
+              </div>
+              <div className="mt-3 pt-2 border-t border-border flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setViewActNumber(act.actNumber)}
+                  className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md border border-border font-mono text-[10px] uppercase tracking-widest text-muted-foreground hover:border-primary hover:text-primary transition-colors"
+                  data-testid={`button-view-act-${act.actNumber}`}
+                  aria-label={`View full details of Act ${act.actNumber}`}
+                >
+                  <Eye className="w-3 h-3" />
+                  View
+                </button>
               </div>
             </div>
           ))}
@@ -912,6 +945,123 @@ function StoryCard({ story }: { story: StoryResponse }) {
           </div>
         </div>
       </div>
+
+      {viewedAct && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in-0"
+          onClick={() => setViewActNumber(null)}
+          data-testid="act-view-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="act-view-title"
+        >
+          <div
+            className="relative w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-md border border-border bg-background shadow-2xl animate-in zoom-in-95"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="sticky top-0 z-10 flex items-start justify-between gap-3 px-5 py-4 bg-background border-b border-border">
+              <div className="min-w-0">
+                <div className="text-[10px] font-mono uppercase tracking-widest text-primary">
+                  Act {viewedAct.actNumber} of {story.acts.length}
+                </div>
+                <h3
+                  id="act-view-title"
+                  className="font-display text-2xl md:text-3xl tracking-tight mt-1"
+                  data-testid="text-view-act-title"
+                >
+                  {viewedAct.title}
+                </h3>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <CopyButton
+                  text={`Act ${viewedAct.actNumber}: ${viewedAct.title}\n\n${viewedAct.description}\n\nKey moment: ${viewedAct.keyMoment}`}
+                  label="Copy"
+                  testId="button-copy-view-act"
+                />
+                <button
+                  type="button"
+                  onClick={() => setViewActNumber(null)}
+                  className="w-8 h-8 inline-flex items-center justify-center rounded-md border border-border text-muted-foreground hover:border-primary hover:text-primary transition-colors"
+                  data-testid="button-close-view-act"
+                  aria-label="Close"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            <div className="px-5 py-5 space-y-5">
+              <div>
+                <div className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-2">
+                  Description
+                </div>
+                <p
+                  className="text-sm leading-relaxed whitespace-pre-wrap"
+                  data-testid="text-view-act-description"
+                >
+                  {viewedAct.description}
+                </p>
+              </div>
+
+              <div className="border-t border-border pt-5">
+                <div className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-2">
+                  Key moment
+                </div>
+                <p
+                  className="text-sm leading-relaxed whitespace-pre-wrap"
+                  data-testid="text-view-act-key-moment"
+                >
+                  {viewedAct.keyMoment}
+                </p>
+              </div>
+
+              {story.acts.length > 1 && (
+                <div className="border-t border-border pt-5 flex items-center justify-between gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const idx = story.acts.findIndex(
+                        (a) => a.actNumber === viewedAct.actNumber,
+                      );
+                      const prev = story.acts[idx - 1];
+                      if (prev) setViewActNumber(prev.actNumber);
+                    }}
+                    disabled={
+                      story.acts.findIndex(
+                        (a) => a.actNumber === viewedAct.actNumber,
+                      ) === 0
+                    }
+                    className="inline-flex items-center gap-1 px-3 py-2 rounded-md border border-border font-mono text-xs uppercase tracking-widest text-muted-foreground hover:border-primary hover:text-primary transition-colors disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:border-border disabled:hover:text-muted-foreground"
+                    data-testid="button-view-act-prev"
+                  >
+                    ← Prev act
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const idx = story.acts.findIndex(
+                        (a) => a.actNumber === viewedAct.actNumber,
+                      );
+                      const next = story.acts[idx + 1];
+                      if (next) setViewActNumber(next.actNumber);
+                    }}
+                    disabled={
+                      story.acts.findIndex(
+                        (a) => a.actNumber === viewedAct.actNumber,
+                      ) ===
+                      story.acts.length - 1
+                    }
+                    className="inline-flex items-center gap-1 px-3 py-2 rounded-md border border-border font-mono text-xs uppercase tracking-widest text-muted-foreground hover:border-primary hover:text-primary transition-colors disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:border-border disabled:hover:text-muted-foreground"
+                    data-testid="button-view-act-next"
+                  >
+                    Next act →
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
