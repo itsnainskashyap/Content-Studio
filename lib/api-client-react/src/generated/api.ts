@@ -19,6 +19,7 @@ import type {
 import type {
   AiError,
   ContinueStoryRequest,
+  EditVideoPromptsRequest,
   HealthStatus,
   MusicBriefRequest,
   MusicBriefResponse,
@@ -370,6 +371,92 @@ export const useGenerateVideoPrompts = <
   TContext
 > => {
   return useMutation(getGenerateVideoPromptsMutationOptions(options));
+};
+
+/**
+ * @summary Refine an existing video part with a writer instruction while preserving continuity to surrounding parts
+ */
+export const getEditVideoPromptsUrl = () => {
+  return `/api/edit-video-prompts`;
+};
+
+export const editVideoPrompts = async (
+  editVideoPromptsRequest: EditVideoPromptsRequest,
+  options?: RequestInit,
+): Promise<VideoPromptsResponse> => {
+  return customFetch<VideoPromptsResponse>(getEditVideoPromptsUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(editVideoPromptsRequest),
+  });
+};
+
+export const getEditVideoPromptsMutationOptions = <
+  TError = ErrorType<AiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof editVideoPrompts>>,
+    TError,
+    { data: BodyType<EditVideoPromptsRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof editVideoPrompts>>,
+  TError,
+  { data: BodyType<EditVideoPromptsRequest> },
+  TContext
+> => {
+  const mutationKey = ["editVideoPrompts"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof editVideoPrompts>>,
+    { data: BodyType<EditVideoPromptsRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return editVideoPrompts(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type EditVideoPromptsMutationResult = NonNullable<
+  Awaited<ReturnType<typeof editVideoPrompts>>
+>;
+export type EditVideoPromptsMutationBody = BodyType<EditVideoPromptsRequest>;
+export type EditVideoPromptsMutationError = ErrorType<AiError>;
+
+/**
+ * @summary Refine an existing video part with a writer instruction while preserving continuity to surrounding parts
+ */
+export const useEditVideoPrompts = <
+  TError = ErrorType<AiError>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof editVideoPrompts>>,
+    TError,
+    { data: BodyType<EditVideoPromptsRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof editVideoPrompts>>,
+  TError,
+  { data: BodyType<EditVideoPromptsRequest> },
+  TContext
+> => {
+  return useMutation(getEditVideoPromptsMutationOptions(options));
 };
 
 /**

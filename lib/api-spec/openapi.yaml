@@ -115,6 +115,36 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AiError"
+  /edit-video-prompts:
+    post:
+      operationId: editVideoPrompts
+      tags: [ai]
+      summary: Refine an existing video part with a writer instruction while preserving continuity to surrounding parts
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EditVideoPromptsRequest"
+      responses:
+        "200":
+          description: Refined video part
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VideoPromptsResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiError"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiError"
   /generate-music-brief:
     post:
       operationId: generateMusicBrief
@@ -470,6 +500,61 @@ components:
         - duration
         - part
         - totalParts
+
+    EditVideoPromptsRequest:
+      type: object
+      properties:
+        story:
+          $ref: "#/components/schemas/StoryResponse"
+        style:
+          type: string
+        duration:
+          type: number
+          description: Duration of this single part in seconds
+        part:
+          type: integer
+        totalParts:
+          type: integer
+        instruction:
+          type: string
+          description: The writer's edit instruction (e.g. "make shot 3 slower", "swap the signature effect to a whip pan", "drop the third shot entirely")
+        existingPart:
+          $ref: "#/components/schemas/VideoPromptsResponse"
+        previousLastFrame:
+          type: string
+          nullable: true
+          description: lastFrameDescription from the previous part — the FIRST shot of the refined part must continue from this frame.
+        nextFirstShot:
+          type: string
+          nullable: true
+          description: One-line description of the FIRST shot of the next part — the refined part's lastFrameDescription must end in a state that allows that next shot to enter seamlessly. Omit when refining the final part.
+        voiceoverLanguage:
+          type: string
+          nullable: true
+        voiceoverTone:
+          type: string
+          nullable: true
+        voiceoverScript:
+          type: string
+          nullable: true
+        bgmStyle:
+          type: string
+          nullable: true
+        bgmTempo:
+          type: string
+          nullable: true
+        bgmInstruments:
+          type: array
+          items:
+            type: string
+      required:
+        - story
+        - style
+        - duration
+        - part
+        - totalParts
+        - instruction
+        - existingPart
 
     MusicPartDirection:
       type: object

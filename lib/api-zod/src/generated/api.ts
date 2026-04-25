@@ -254,6 +254,173 @@ export const GenerateVideoPromptsResponse = zod.object({
 });
 
 /**
+ * @summary Refine an existing video part with a writer instruction while preserving continuity to surrounding parts
+ */
+export const EditVideoPromptsBody = zod.object({
+  story: zod.object({
+    title: zod.string(),
+    synopsis: zod.string(),
+    acts: zod.array(
+      zod.object({
+        actNumber: zod.number(),
+        title: zod.string(),
+        description: zod.string(),
+        keyMoment: zod.string(),
+      }),
+    ),
+    characters: zod.array(
+      zod.object({
+        name: zod.string(),
+        description: zod.string(),
+      }),
+    ),
+    mood: zod.string(),
+    colorPalette: zod
+      .array(zod.string())
+      .describe('List of hex color strings, e.g. [\"#1a1a1a\", \"#E8FF47\"]'),
+    musicSuggestion: zod.string(),
+    commentary: zod
+      .string()
+      .optional()
+      .describe(
+        "A short 2-3 sentence chat-style note from the AI explaining the most important creative choices in this story (the hook, the visual signature, the emotional arc, or what just changed if this was a refinement). Optional — older clients will fall back to a generic message.",
+      ),
+  }),
+  style: zod.string(),
+  duration: zod.number().describe("Duration of this single part in seconds"),
+  part: zod.number(),
+  totalParts: zod.number(),
+  instruction: zod
+    .string()
+    .describe(
+      'The writer\'s edit instruction (e.g. \"make shot 3 slower\", \"swap the signature effect to a whip pan\", \"drop the third shot entirely\")',
+    ),
+  existingPart: zod.object({
+    shots: zod.array(
+      zod.object({
+        shotNumber: zod.number(),
+        timestamp: zod.string().describe('e.g. \"00:00-00:03\"'),
+        name: zod.string(),
+        effects: zod.array(zod.string()),
+        description: zod.string(),
+        cameraWork: zod.string(),
+        speed: zod.string(),
+        transition: zod.string(),
+        isSignature: zod.boolean(),
+      }),
+    ),
+    effectsInventory: zod.array(
+      zod.object({
+        name: zod.string(),
+        usedCount: zod.number(),
+        shots: zod.array(zod.number()),
+        role: zod.string(),
+      }),
+    ),
+    densityMap: zod.array(
+      zod.object({
+        timeRange: zod.string(),
+        density: zod.string().describe("HIGH | MEDIUM | LOW"),
+        effects: zod.array(zod.string()),
+        count: zod.number(),
+        duration: zod.string(),
+      }),
+    ),
+    energyArc: zod.object({
+      act1: zod.string(),
+      act2: zod.string(),
+      act3: zod.string(),
+    }),
+    lastFrameDescription: zod.string(),
+    copyablePrompt: zod.string(),
+    autoVoiceoverScript: zod
+      .string()
+      .nullish()
+      .describe(
+        "VO script written by the model when voiceoverLanguage was set in the request",
+      ),
+    audioSummary: zod
+      .object({
+        voiceoverIncluded: zod.boolean(),
+        bgmIncluded: zod.boolean(),
+        keySyncPoints: zod.array(zod.string()),
+      })
+      .optional(),
+  }),
+  previousLastFrame: zod
+    .string()
+    .nullish()
+    .describe(
+      "lastFrameDescription from the previous part — the FIRST shot of the refined part must continue from this frame.",
+    ),
+  nextFirstShot: zod
+    .string()
+    .nullish()
+    .describe(
+      "One-line description of the FIRST shot of the next part — the refined part's lastFrameDescription must end in a state that allows that next shot to enter seamlessly. Omit when refining the final part.",
+    ),
+  voiceoverLanguage: zod.string().nullish(),
+  voiceoverTone: zod.string().nullish(),
+  voiceoverScript: zod.string().nullish(),
+  bgmStyle: zod.string().nullish(),
+  bgmTempo: zod.string().nullish(),
+  bgmInstruments: zod.array(zod.string()).optional(),
+});
+
+export const EditVideoPromptsResponse = zod.object({
+  shots: zod.array(
+    zod.object({
+      shotNumber: zod.number(),
+      timestamp: zod.string().describe('e.g. \"00:00-00:03\"'),
+      name: zod.string(),
+      effects: zod.array(zod.string()),
+      description: zod.string(),
+      cameraWork: zod.string(),
+      speed: zod.string(),
+      transition: zod.string(),
+      isSignature: zod.boolean(),
+    }),
+  ),
+  effectsInventory: zod.array(
+    zod.object({
+      name: zod.string(),
+      usedCount: zod.number(),
+      shots: zod.array(zod.number()),
+      role: zod.string(),
+    }),
+  ),
+  densityMap: zod.array(
+    zod.object({
+      timeRange: zod.string(),
+      density: zod.string().describe("HIGH | MEDIUM | LOW"),
+      effects: zod.array(zod.string()),
+      count: zod.number(),
+      duration: zod.string(),
+    }),
+  ),
+  energyArc: zod.object({
+    act1: zod.string(),
+    act2: zod.string(),
+    act3: zod.string(),
+  }),
+  lastFrameDescription: zod.string(),
+  copyablePrompt: zod.string(),
+  autoVoiceoverScript: zod
+    .string()
+    .nullish()
+    .describe(
+      "VO script written by the model when voiceoverLanguage was set in the request",
+    ),
+  audioSummary: zod
+    .object({
+      voiceoverIncluded: zod.boolean(),
+      bgmIncluded: zod.boolean(),
+      keySyncPoints: zod.array(zod.string()),
+    })
+    .optional(),
+});
+
+/**
  * @summary Generate a Suno/Udio music brief for the project
  */
 export const GenerateMusicBriefBody = zod.object({

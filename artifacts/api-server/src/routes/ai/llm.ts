@@ -13,6 +13,7 @@ const VIDEO_PROMPTS_MAX_TOKENS = 16384;
 
 function maxTokensForLabel(label: string): number {
   if (label === "generate-video-prompts") return VIDEO_PROMPTS_MAX_TOKENS;
+  if (label === "edit-video-prompts") return VIDEO_PROMPTS_MAX_TOKENS;
   return DEFAULT_MAX_TOKENS;
 }
 

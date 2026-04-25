@@ -8,6 +8,7 @@
 
 export * from "./aiError";
 export * from "./continueStoryRequest";
+export * from "./editVideoPromptsRequest";
 export * from "./healthStatus";
 export * from "./musicBriefRequest";
 export * from "./musicBriefResponse";

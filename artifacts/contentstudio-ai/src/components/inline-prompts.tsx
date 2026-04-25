@@ -10,8 +10,13 @@ import {
   StopCircle,
   ClipboardCopy,
   Check,
+  Pencil,
+  ChevronDown,
+  ChevronUp,
+  Send,
 } from "lucide-react";
 import { toast } from "sonner";
+import { editVideoPrompts } from "@workspace/api-client-react";
 import {
   storage,
   type Project,
@@ -580,12 +585,24 @@ export function InlinePrompts({
             <PartCard
               key={p.partNumber}
               part={p}
+              parts={parts}
               partsCount={parts.length}
+              partsTotal={partsCount}
+              partDuration={partDuration}
               continuesFrom={idx > 0}
+              story={project.story}
               style={style}
               voLanguage={voLanguage}
-              bgmName={bgm?.name ?? null}
-              bgmTempo={bgm?.tempo ?? null}
+              voTone={voTone}
+              bgm={bgm}
+              onPartUpdated={(updated) => {
+                const saved = storage.replaceProjectPart(project.id, updated);
+                if (saved) {
+                  onProjectUpdated(saved);
+                  window.dispatchEvent(new Event("cs:projects-changed"));
+                }
+                generation.replaceJobPart(project.id, updated);
+              }}
             />
           ))}
         </div>
@@ -596,27 +613,108 @@ export function InlinePrompts({
 
 function PartCard({
   part,
+  parts,
   partsCount,
+  partsTotal,
+  partDuration,
   continuesFrom,
+  story,
   style,
   voLanguage,
-  bgmName,
-  bgmTempo,
+  voTone,
+  bgm,
+  onPartUpdated,
 }: {
   part: ProjectPart;
+  parts: ProjectPart[];
   partsCount: number;
+  partsTotal: number;
+  partDuration: number;
   continuesFrom: boolean;
+  story: Project["story"];
   style: string;
   voLanguage: VoiceoverLanguage;
-  bgmName: string | null;
-  bgmTempo: string | null;
+  voTone: string;
+  bgm: { name: string; tempo: string; instruments: string[] } | null;
+  onPartUpdated: (updated: ProjectPart) => void;
 }) {
   const [expandedShot, setExpandedShot] = useState<number | null>(null);
+  const [showFullPrompt, setShowFullPrompt] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editInstruction, setEditInstruction] = useState("");
+  const [editing, setEditing] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+  const bgmName = bgm?.name ?? null;
+  const bgmTempo = bgm?.tempo ?? null;
   const start = (part.partNumber - 1) * 15;
   const end = part.partNumber * 15;
   const fmt = (n: number) =>
     `${String(Math.floor(n / 60)).padStart(2, "0")}:${String(n % 60).padStart(2, "0")}`;
   const signature = part.shots.find((s) => s.isSignature);
+
+  const previousPart = parts.find((p) => p.partNumber === part.partNumber - 1);
+  const nextPart = parts.find((p) => p.partNumber === part.partNumber + 1);
+
+  // Close modal on Escape
+  useEffect(() => {
+    if (!editOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !editing) setEditOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [editOpen, editing]);
+
+  const submitEdit = async () => {
+    const instruction = editInstruction.trim();
+    if (!instruction) {
+      setEditError("Please describe what you want to change.");
+      return;
+    }
+    if (!story) {
+      setEditError("This project has no saved story to edit against.");
+      return;
+    }
+    setEditing(true);
+    setEditError(null);
+    try {
+      const result = await editVideoPrompts({
+        story,
+        style,
+        duration: partDuration,
+        part: part.partNumber,
+        totalParts: partsTotal,
+        instruction,
+        existingPart: part,
+        previousLastFrame: previousPart?.lastFrameDescription ?? null,
+        nextFirstShot: nextPart?.shots[0]?.description ?? null,
+        voiceoverLanguage:
+          voLanguage === "none" ? null : voLanguage,
+        voiceoverTone: voLanguage === "none" ? null : voTone,
+        bgmStyle: bgmName,
+        bgmTempo: bgmTempo,
+        bgmInstruments: bgm?.instruments ?? [],
+      });
+      const updated: ProjectPart = {
+        ...result,
+        partNumber: part.partNumber,
+        voiceoverLanguage: voLanguage === "none" ? null : voLanguage,
+        bgmStyle: bgmName,
+        bgmTempo: bgmTempo,
+      };
+      onPartUpdated(updated);
+      toast.success(`Part ${part.partNumber} updated`);
+      setEditOpen(false);
+      setEditInstruction("");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Edit failed";
+      setEditError(msg);
+      toast.error(`Couldn't apply edit: ${msg}`);
+    } finally {
+      setEditing(false);
+    }
+  };
+
   return (
     <div
       className="border border-border rounded-md bg-background"
@@ -642,12 +740,23 @@ function PartCard({
             </div>
           )}
         </div>
-        <CopyButton
-          text={part.copyablePrompt}
-          label="Copy full prompt"
-          variant="accent"
-          testId={`button-copy-part-${part.partNumber}`}
-        />
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            type="button"
+            onClick={() => setEditOpen(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-md border border-border font-mono text-[10px] uppercase tracking-widest text-muted-foreground hover:border-primary hover:text-primary transition-colors"
+            data-testid={`button-edit-part-${part.partNumber}`}
+            aria-label={`Edit part ${part.partNumber} with a prompt`}
+          >
+            <Pencil className="w-3.5 h-3.5" /> Edit with prompt
+          </button>
+          <CopyButton
+            text={part.copyablePrompt}
+            label="Copy full prompt"
+            variant="accent"
+            testId={`button-copy-part-${part.partNumber}`}
+          />
+        </div>
       </div>
 
       <div className="p-5 space-y-5">
@@ -805,7 +914,185 @@ function PartCard({
             </div>
           </div>
         )}
+
+        {/* Full copyable prompt — collapsible */}
+        <div>
+          <button
+            type="button"
+            onClick={() => setShowFullPrompt((v) => !v)}
+            className="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-md border border-border text-left hover:border-primary/50 transition-colors"
+            data-testid={`button-toggle-full-prompt-${part.partNumber}`}
+            aria-expanded={showFullPrompt}
+          >
+            <span className="flex items-center gap-2">
+              <span className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
+                Full Seedance prompt
+              </span>
+              <span className="text-[10px] font-mono text-muted-foreground/70">
+                ({part.copyablePrompt.length.toLocaleString()} chars)
+              </span>
+            </span>
+            <span className="flex items-center gap-2">
+              {showFullPrompt ? (
+                <ChevronUp className="w-4 h-4 text-muted-foreground" />
+              ) : (
+                <ChevronDown className="w-4 h-4 text-muted-foreground" />
+              )}
+            </span>
+          </button>
+          {showFullPrompt && (
+            <div className="mt-2 border border-border rounded-md bg-card">
+              <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-border">
+                <div className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
+                  Paste-ready Seedance 2.0 prompt
+                </div>
+                <CopyButton
+                  text={part.copyablePrompt}
+                  label="Copy"
+                  testId={`button-copy-full-prompt-${part.partNumber}`}
+                />
+              </div>
+              <pre
+                className="px-3 py-3 text-[11px] leading-relaxed whitespace-pre-wrap break-words font-mono text-foreground/90 max-h-[420px] overflow-y-auto"
+                data-testid={`text-full-prompt-${part.partNumber}`}
+              >
+                {part.copyablePrompt}
+              </pre>
+              <div className="px-3 py-2 border-t border-border text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
+                Last frame · {part.lastFrameDescription}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
+
+      {editOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in-0"
+          onClick={() => {
+            if (!editing) setEditOpen(false);
+          }}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={`edit-part-title-${part.partNumber}`}
+          data-testid={`edit-part-modal-${part.partNumber}`}
+        >
+          <div
+            className="relative w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-md border border-border bg-background shadow-2xl animate-in zoom-in-95"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="sticky top-0 z-10 flex items-start justify-between gap-3 px-5 py-4 bg-background border-b border-border">
+              <div className="min-w-0">
+                <div className="text-[10px] font-mono uppercase tracking-widest text-primary">
+                  Edit · Part {part.partNumber} of {partsTotal}
+                </div>
+                <h3
+                  id={`edit-part-title-${part.partNumber}`}
+                  className="font-display text-2xl tracking-tight mt-1"
+                >
+                  Refine with a prompt
+                </h3>
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  Tell the AI what to change. Continuity to {previousPart ? `Part ${previousPart.partNumber}` : "(no previous part)"}{" "}
+                  and {nextPart ? `Part ${nextPart.partNumber}` : "(no next part)"} will be preserved automatically.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!editing) setEditOpen(false);
+                }}
+                disabled={editing}
+                className="w-8 h-8 inline-flex items-center justify-center rounded-md border border-border text-muted-foreground hover:border-primary hover:text-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                data-testid={`button-close-edit-${part.partNumber}`}
+                aria-label="Close"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="px-5 py-5 space-y-4">
+              <div>
+                <label
+                  htmlFor={`edit-instruction-${part.partNumber}`}
+                  className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground"
+                >
+                  Your instruction
+                </label>
+                <textarea
+                  id={`edit-instruction-${part.partNumber}`}
+                  value={editInstruction}
+                  onChange={(e) => {
+                    setEditInstruction(e.target.value);
+                    if (editError) setEditError(null);
+                  }}
+                  disabled={editing}
+                  rows={5}
+                  placeholder='e.g. "Make shot 3 a slow whip pan instead of a cut" or "Drop the second shot and add a close-up at the end"'
+                  className="mt-2 w-full px-3 py-2 rounded-md border border-border bg-card text-sm focus:outline-none focus:border-primary resize-y disabled:opacity-50"
+                  data-testid={`textarea-edit-instruction-${part.partNumber}`}
+                />
+              </div>
+
+              <div className="rounded-md border border-border bg-card/50 px-3 py-2 text-[11px] text-muted-foreground space-y-1">
+                <div>
+                  <span className="font-mono uppercase tracking-widest text-[9px]">Entry continuity ·</span>{" "}
+                  {previousPart
+                    ? `continues from Part ${previousPart.partNumber}'s last frame.`
+                    : "this is the first part — no entry constraint."}
+                </div>
+                <div>
+                  <span className="font-mono uppercase tracking-widest text-[9px]">Exit continuity ·</span>{" "}
+                  {nextPart
+                    ? `must end so Part ${nextPart.partNumber} can still continue from it.`
+                    : "this is the final part — no exit constraint."}
+                </div>
+              </div>
+
+              {editError && (
+                <div
+                  className="px-3 py-2 rounded-md border border-red-500/30 bg-red-500/10 text-xs text-red-400"
+                  data-testid={`text-edit-error-${part.partNumber}`}
+                >
+                  {editError}
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!editing) setEditOpen(false);
+                  }}
+                  disabled={editing}
+                  className="px-4 py-2 rounded-md border border-border font-mono text-xs uppercase tracking-widest text-muted-foreground hover:border-foreground/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  data-testid={`button-cancel-edit-${part.partNumber}`}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={submitEdit}
+                  disabled={editing || !editInstruction.trim()}
+                  className="inline-flex items-center gap-2 px-5 py-2 rounded-md bg-primary text-black font-mono text-xs uppercase tracking-widest hover:bg-[#D4EB3A] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  data-testid={`button-submit-edit-${part.partNumber}`}
+                >
+                  {editing ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Refining…
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-4 h-4" /> Apply edit
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

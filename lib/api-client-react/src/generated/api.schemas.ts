@@ -130,6 +130,28 @@ export interface VideoPromptsRequest {
   bgmInstruments?: string[];
 }
 
+export interface EditVideoPromptsRequest {
+  story: StoryResponse;
+  style: string;
+  /** Duration of this single part in seconds */
+  duration: number;
+  part: number;
+  totalParts: number;
+  /** The writer's edit instruction (e.g. "make shot 3 slower", "swap the signature effect to a whip pan", "drop the third shot entirely") */
+  instruction: string;
+  existingPart: VideoPromptsResponse;
+  /** lastFrameDescription from the previous part — the FIRST shot of the refined part must continue from this frame. */
+  previousLastFrame?: string | null;
+  /** One-line description of the FIRST shot of the next part — the refined part's lastFrameDescription must end in a state that allows that next shot to enter seamlessly. Omit when refining the final part. */
+  nextFirstShot?: string | null;
+  voiceoverLanguage?: string | null;
+  voiceoverTone?: string | null;
+  voiceoverScript?: string | null;
+  bgmStyle?: string | null;
+  bgmTempo?: string | null;
+  bgmInstruments?: string[];
+}
+
 export interface MusicPartDirection {
   part: number;
   musicDirection: string;

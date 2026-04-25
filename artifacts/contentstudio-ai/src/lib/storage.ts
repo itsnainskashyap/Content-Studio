@@ -204,6 +204,27 @@ export const storage = {
   totalShots(project: Project): number {
     return project.parts.reduce((sum, p) => sum + p.shots.length, 0);
   },
+
+  /**
+   * Replace the part with the matching partNumber in the given project. If
+   * the part doesn't exist yet (edge case after a partial regenerate) it is
+   * appended. Returns the saved project.
+   */
+  replaceProjectPart(projectId: string, replacement: ProjectPart): Project | undefined {
+    const proj = storage.getProject(projectId);
+    if (!proj) return undefined;
+    const idx = proj.parts.findIndex(
+      (p) => p.partNumber === replacement.partNumber,
+    );
+    const nextParts = [...proj.parts];
+    if (idx >= 0) {
+      nextParts[idx] = replacement;
+    } else {
+      nextParts.push(replacement);
+      nextParts.sort((a, b) => a.partNumber - b.partNumber);
+    }
+    return storage.saveProject({ ...proj, parts: nextParts });
+  },
 };
 
 // ----------------------------------------------------------------------------

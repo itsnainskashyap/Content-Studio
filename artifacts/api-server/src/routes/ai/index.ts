@@ -6,6 +6,8 @@ import {
   ContinueStoryResponse,
   GenerateVideoPromptsBody,
   GenerateVideoPromptsResponse,
+  EditVideoPromptsBody,
+  EditVideoPromptsResponse,
   GenerateMusicBriefBody,
   GenerateMusicBriefResponse,
   GenerateVoiceoverBody,
@@ -17,6 +19,7 @@ import {
   STORY_SYSTEM_PROMPT,
   CONTINUE_STORY_SYSTEM_PROMPT,
   VIDEO_PROMPTS_SYSTEM_PROMPT,
+  EDIT_VIDEO_PART_SYSTEM_PROMPT,
   MUSIC_BRIEF_SYSTEM_PROMPT,
   VOICEOVER_SYSTEM_PROMPT,
 } from "./prompts";
@@ -211,6 +214,97 @@ Output the JSON described in the system prompt.`;
       res.json(result);
     } catch (err) {
       handleError(res, "generate-video-prompts", err);
+    }
+  },
+);
+
+router.post(
+  "/edit-video-prompts",
+  async (req: Request, res: Response) => {
+    const parsed = EditVideoPromptsBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.message });
+      return;
+    }
+    const {
+      story,
+      style,
+      duration,
+      part,
+      totalParts,
+      instruction,
+      existingPart,
+      previousLastFrame,
+      nextFirstShot,
+      voiceoverLanguage,
+      voiceoverTone,
+      voiceoverScript,
+      bgmStyle,
+      bgmTempo,
+      bgmInstruments,
+    } = parsed.data;
+
+    const audioBlock: string[] = [];
+    if (voiceoverLanguage && voiceoverLanguage !== "none") {
+      audioBlock.push(
+        `- Voiceover language: ${voiceoverLanguage}` +
+          (voiceoverTone ? ` (tone: ${voiceoverTone})` : "") +
+          (voiceoverScript
+            ? `\n  Use this pre-written script verbatim for [VOICEOVER: ...]: ${voiceoverScript}`
+            : `\n  No script provided — auto-write a fresh VO for the refined part if a VO was present originally.`),
+      );
+    } else {
+      audioBlock.push(
+        `- Voiceover: NOT included (omit the [VOICEOVER: ...] block; autoVoiceoverScript should be null).`,
+      );
+    }
+    if (bgmStyle) {
+      audioBlock.push(
+        `- Background music: ${bgmStyle}` +
+          (bgmTempo ? ` (${bgmTempo})` : "") +
+          (bgmInstruments && bgmInstruments.length
+            ? ` — instruments: ${bgmInstruments.join(", ")}`
+            : ""),
+      );
+    } else {
+      audioBlock.push(
+        `- Background music: NOT included (omit the [BACKGROUND MUSIC: ...] block).`,
+      );
+    }
+
+    const userPrompt = `Refine ONE existing part of a multi-part Seedance 2.0 video. Apply the writer's instruction LITERALLY. Preserve continuity to the surrounding parts per the rules in the system prompt.
+
+STORY (full context for all parts):
+${describeStory(story)}
+
+THIS PART:
+- Part number: ${part} of ${totalParts}
+- Duration of this part: ${duration} seconds (keep the refined part roughly the same total duration)
+- Style: ${style}
+${previousLastFrame ? `- ENTRY CONTINUITY — the previous part ended on this frame; the FIRST shot of the refined part must continue from it (unless the writer's instruction explicitly retargets the opening):\n  ${previousLastFrame}` : "- This is the FIRST part — no entry frame to continue from."}
+${nextFirstShot ? `- EXIT CONTINUITY — the NEXT part has already been generated. Its first shot is:\n  ${nextFirstShot}\n  Your refined lastFrameDescription MUST end in a state that allows that next shot to enter seamlessly.` : "- This is the FINAL part — no next-shot constraint on lastFrameDescription."}
+
+AUDIO FOR THIS PART:
+${audioBlock.join("\n")}
+
+EXISTING PART (the JSON the writer is refining — preserve everything they did NOT mention):
+${JSON.stringify(existingPart)}
+
+WRITER'S INSTRUCTION (apply LITERALLY, this is the only thing that should change unless side-effects are unavoidable):
+${instruction}
+
+Output the COMPLETE refined VideoPromptsResponse JSON.`;
+
+    try {
+      const result = await generateJson({
+        systemPrompt: EDIT_VIDEO_PART_SYSTEM_PROMPT,
+        userPrompt,
+        schema: EditVideoPromptsResponse,
+        label: "edit-video-prompts",
+      });
+      res.json(result);
+    } catch (err) {
+      handleError(res, "edit-video-prompts", err);
     }
   },
 );

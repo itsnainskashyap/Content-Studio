@@ -37,6 +37,11 @@ interface GenerationContextValue {
   generateNextPart: (projectId: string) => void;
   cancel: (projectId: string) => void;
   clear: (projectId: string) => void;
+  /**
+   * Replace a single part in the in-memory job (after an inline edit).
+   * No-op if there's no job for this project.
+   */
+  replaceJobPart: (projectId: string, replacement: ProjectPart) => void;
 }
 
 const GenerationContext = createContext<GenerationContextValue | null>(null);
@@ -217,6 +222,30 @@ export function GenerationProvider({ children }: { children: ReactNode }) {
     }
   }, [updateJob]);
 
+  const replaceJobPart = useCallback(
+    (projectId: string, replacement: ProjectPart) => {
+      const cur = jobsRef.current[projectId];
+      if (!cur) return;
+      const idx = cur.parts.findIndex(
+        (p) => p.partNumber === replacement.partNumber,
+      );
+      if (idx < 0) return;
+      const nextParts = [...cur.parts];
+      nextParts[idx] = replacement;
+      // If the replaced part is the LAST one we've completed so far, also
+      // refresh previousLastFrame so any subsequent "generate next" picks
+      // up the new continuation frame.
+      const isLastCompleted = idx === cur.parts.length - 1;
+      updateJob(projectId, {
+        parts: nextParts,
+        previousLastFrame: isLastCompleted
+          ? replacement.lastFrameDescription
+          : cur.previousLastFrame,
+      });
+    },
+    [updateJob],
+  );
+
   const clear = useCallback((projectId: string) => {
     const c = controllersRef.current[projectId];
     if (c) c.abort();
@@ -242,7 +271,16 @@ export function GenerationProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <GenerationContext.Provider value={{ getJob, startGeneration, generateNextPart, cancel, clear }}>
+    <GenerationContext.Provider
+      value={{
+        getJob,
+        startGeneration,
+        generateNextPart,
+        cancel,
+        clear,
+        replaceJobPart,
+      }}
+    >
       {children}
     </GenerationContext.Provider>
   );
