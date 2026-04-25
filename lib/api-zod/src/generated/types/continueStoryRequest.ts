@@ -9,5 +9,9 @@ import type { StoryResponse } from "./storyResponse";
 
 export interface ContinueStoryRequest {
   existingStory: StoryResponse;
+  /**
+   * @minLength 1
+   * @maxLength 2000
+   */
   direction: string;
 }

@@ -26,6 +26,23 @@ import {
 
 const router: IRouter = Router();
 
+interface ZodIssueLike {
+  path: Array<string | number>;
+  message: string;
+}
+interface ZodErrorLike {
+  issues: ZodIssueLike[];
+}
+
+function formatZodError(err: ZodErrorLike): string {
+  return err.issues
+    .map((i) => {
+      const path = i.path.length ? i.path.join(".") : "(body)";
+      return `${path}: ${i.message}`;
+    })
+    .join("; ");
+}
+
 function handleError(res: Response, label: string, err: unknown) {
   logger.error({ err, label }, "AI route error");
   const message = err instanceof Error ? err.message : "Unknown server error";
@@ -38,6 +55,11 @@ function describePreviousParts(previousParts: string[] | undefined): string {
     .map((p, i) => `--- Part ${i + 1} digest ---\n${p}`)
     .join("\n\n")}\n`;
 }
+
+const GenerateVideoPromptsBodyChecked = GenerateVideoPromptsBody.refine(
+  (v) => v.part <= v.totalParts,
+  { message: "part must be <= totalParts", path: ["part"] },
+);
 
 function describeStory(story: {
   title: string;
@@ -74,7 +96,7 @@ ${story.acts
 router.post("/generate-story", async (req: Request, res: Response) => {
   const parsed = GenerateStoryBody.safeParse(req.body);
   if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
+    res.status(400).json({ error: formatZodError(parsed.error) });
     return;
   }
   const {
@@ -117,7 +139,7 @@ Output the structured story as JSON.`;
 router.post("/continue-story", async (req: Request, res: Response) => {
   const parsed = ContinueStoryBody.safeParse(req.body);
   if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
+    res.status(400).json({ error: formatZodError(parsed.error) });
     return;
   }
   const { existingStory, direction } = parsed.data;
@@ -147,9 +169,9 @@ Output the full updated story as JSON.`;
 router.post(
   "/generate-video-prompts",
   async (req: Request, res: Response) => {
-    const parsed = GenerateVideoPromptsBody.safeParse(req.body);
+    const parsed = GenerateVideoPromptsBodyChecked.safeParse(req.body);
     if (!parsed.success) {
-      res.status(400).json({ error: parsed.error.message });
+      res.status(400).json({ error: formatZodError(parsed.error) });
       return;
     }
     const {
@@ -169,7 +191,7 @@ router.post(
     } = parsed.data;
 
     const audioBlock: string[] = [];
-    if (voiceoverLanguage && voiceoverLanguage !== "none") {
+    if (voiceoverLanguage) {
       audioBlock.push(
         `- Voiceover language: ${voiceoverLanguage}` +
           (voiceoverTone ? ` (tone: ${voiceoverTone})` : "") +
@@ -321,7 +343,7 @@ Output the COMPLETE refined VideoPromptsResponse JSON.`;
 router.post("/generate-music-brief", async (req: Request, res: Response) => {
   const parsed = GenerateMusicBriefBody.safeParse(req.body);
   if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
+    res.status(400).json({ error: formatZodError(parsed.error) });
     return;
   }
   const { story, style, mood, duration, language, energyLevel, tempo, totalParts } =
@@ -359,7 +381,7 @@ Output the music brief as JSON. The sunoPrompt MUST follow Suno's bracketed tag 
 router.post("/generate-voiceover", async (req: Request, res: Response) => {
   const parsed = GenerateVoiceoverBody.safeParse(req.body);
   if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
+    res.status(400).json({ error: formatZodError(parsed.error) });
     return;
   }
   const { story, style, language, tone, duration, part, pace } = parsed.data;

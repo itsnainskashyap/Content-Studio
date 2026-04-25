@@ -5,17 +5,38 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { MusicBriefRequestLanguage } from "./musicBriefRequestLanguage";
+import type { MusicBriefRequestTempo } from "./musicBriefRequestTempo";
 import type { StoryResponse } from "./storyResponse";
 
 export interface MusicBriefRequest {
   story: StoryResponse;
+  /**
+   * @minLength 1
+   * @maxLength 120
+   */
   style: string;
+  /**
+   * @minLength 1
+   * @maxLength 200
+   */
   mood: string;
+  /**
+   * @minimum 5
+   * @maximum 3600
+   */
   duration: number;
-  language: string;
-  /** 1-10 scale */
+  language: MusicBriefRequestLanguage;
+  /**
+   * 1-10 scale
+   * @minimum 1
+   * @maximum 10
+   */
   energyLevel?: number;
-  /** slow | medium | fast | very_fast */
-  tempo?: string;
+  tempo?: MusicBriefRequestTempo;
+  /**
+   * @minimum 1
+   * @maximum 240
+   */
   totalParts?: number;
 }

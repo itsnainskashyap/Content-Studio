@@ -6,15 +6,35 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { StoryResponse } from "./storyResponse";
+import type { VideoPromptsRequestVoiceoverLanguage } from "./videoPromptsRequestVoiceoverLanguage";
 
 export interface VideoPromptsRequest {
   story: StoryResponse;
+  /**
+   * @minLength 1
+   * @maxLength 120
+   */
   style: string;
-  /** Duration of this single part in seconds */
+  /**
+   * Duration of this single part in seconds
+   * @minimum 1
+   * @maximum 60
+   */
   duration: number;
+  /**
+   * @minimum 1
+   * @maximum 240
+   */
   part: number;
+  /**
+   * @minimum 1
+   * @maximum 240
+   */
   totalParts: number;
-  /** lastFrameDescription from the previous part for continuation */
+  /**
+   * lastFrameDescription from the previous part for continuation
+   * @maxLength 4000
+   */
   previousLastFrame?: string;
   /** One compact text digest per already-generated part (parts 1..N-1), in order.
 Each entry should summarize that part's shots, voiceover script, effects,
@@ -22,12 +42,19 @@ and last frame so the model has full memory of what was already shown
 and can avoid repetition / maintain cumulative continuity.
  */
   previousParts?: string[];
-  /** "english" | "hindi" | "hinglish" — when set, Claude auto-writes a part-specific VO */
-  voiceoverLanguage?: string | null;
+  /** When set, Claude auto-writes a part-specific VO */
+  voiceoverLanguage?: VideoPromptsRequestVoiceoverLanguage;
+  /** @maxLength 80 */
   voiceoverTone?: string | null;
-  /** Optional pre-written script for this part. If absent and voiceoverLanguage is set, the model writes one. */
+  /**
+   * Optional pre-written script for this part. If absent and voiceoverLanguage is set, the model writes one.
+   * @maxLength 4000
+   */
   voiceoverScript?: string | null;
+  /** @maxLength 120 */
   bgmStyle?: string | null;
+  /** @maxLength 40 */
   bgmTempo?: string | null;
+  /** @maxItems 20 */
   bgmInstruments?: string[];
 }

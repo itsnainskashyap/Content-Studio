@@ -6,14 +6,28 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { StoryResponse } from "./storyResponse";
+import type { VoiceoverRequestLanguage } from "./voiceoverRequestLanguage";
+import type { VoiceoverRequestPace } from "./voiceoverRequestPace";
 
 export interface VoiceoverRequest {
   story: StoryResponse;
+  /** @maxLength 120 */
   style?: string;
-  language: string;
+  language: VoiceoverRequestLanguage;
+  /**
+   * @minLength 1
+   * @maxLength 60
+   */
   tone: string;
+  /**
+   * @minimum 1
+   * @maximum 600
+   */
   duration: number;
+  /**
+   * @minimum 1
+   * @maximum 240
+   */
   part: number;
-  /** slow | normal | fast */
-  pace?: string;
+  pace?: VoiceoverRequestPace;
 }

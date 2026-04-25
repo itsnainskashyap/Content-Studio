@@ -28,7 +28,7 @@ See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and pa
 
 ## Artifacts
 
-- **`artifacts/api-server`** — Express AI API. Routes under `/api/`: `generate-story`, `continue-story`, `generate-video-prompts`, `generate-music-brief`, `generate-voiceover`. Uses Replit AI Integrations (Anthropic Claude). System/user prompts in `src/routes/ai/prompts.ts`.
+- **`artifacts/api-server`** — Express AI API. Routes under `/api/`: `generate-story`, `continue-story`, `generate-video-prompts`, `generate-music-brief`, `generate-voiceover`. Uses Replit AI Integrations (Anthropic Claude). System/user prompts in `src/routes/ai/prompts.ts`. Each handler validates the request body with the generated zod schema (from `lib/api-zod`) and returns a human-readable HTTP 400 (`formatZodError`) before any AI call. Enums and bounds (language, pace, tempo, durations, part counts, energy 1-10) live in `lib/api-spec/openapi.yaml`; regenerate with `pnpm --filter @workspace/api-spec run codegen`. The video-prompts route additionally enforces `part <= totalParts` via `.refine`.
 - **`artifacts/contentstudio-ai`** — React + Vite app for AI video prompt creation (Seedance 2.0). Dark editorial design (#0A0A0A bg, #E8FF47 lime).
   - Pages: `dashboard`, `story` (Story Builder + inline prompts panel), `prompts` (`/generate`, fallback Quick Video), `music`, `voiceover`, `history`, `settings`.
   - Project state lives in `localStorage` (see `src/lib/storage.ts`). Key fields per project: `style`, `voiceoverLanguage`, `totalDurationSeconds`, `partsCount`, `parts[]`. `migrateProject()` in `getProjects()` backfills new fields on legacy data.

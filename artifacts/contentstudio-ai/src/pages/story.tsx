@@ -106,7 +106,7 @@ export default function StoryBuilder() {
     const preset = DURATIONS.find((d) => d.key === durationKey);
     if (!preset) return 30;
     if (preset.seconds !== null) return preset.seconds;
-    return Math.max(15, customMin * 60 + customSec);
+    return Math.min(3600, Math.max(15, customMin * 60 + customSec));
   }, [durationKey, customMin, customSec]);
 
   const partsCount = useMemo(

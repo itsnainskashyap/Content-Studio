@@ -17,32 +17,53 @@ export const HealthCheckResponse = zod.object({
 /**
  * @summary Generate a structured story from a brief
  */
+export const generateStoryBodyBriefMax = 4000;
+
+export const generateStoryBodyGenreMax = 80;
+
+export const generateStoryBodyDurationMin = 5;
+export const generateStoryBodyDurationMax = 3600;
+
+export const generateStoryBodyTotalDurationSecondsMin = 5;
+export const generateStoryBodyTotalDurationSecondsMax = 3600;
+
+export const generateStoryBodyPartsCountMax = 240;
+
+export const generateStoryBodyStyleMax = 120;
+
 export const GenerateStoryBody = zod.object({
-  brief: zod.string(),
-  genre: zod.string(),
+  brief: zod.string().min(1).max(generateStoryBodyBriefMax),
+  genre: zod.string().min(1).max(generateStoryBodyGenreMax),
   duration: zod
     .number()
+    .min(generateStoryBodyDurationMin)
+    .max(generateStoryBodyDurationMax)
     .describe(
       "Total target duration in seconds (kept for backward compatibility, equivalent to totalDurationSeconds)",
     ),
   totalDurationSeconds: zod
     .number()
+    .min(generateStoryBodyTotalDurationSecondsMin)
+    .max(generateStoryBodyTotalDurationSecondsMax)
     .optional()
     .describe("Total target duration in seconds"),
   partsCount: zod
     .number()
+    .min(1)
+    .max(generateStoryBodyPartsCountMax)
     .optional()
     .describe(
       "Number of 15-second video parts (Math.ceil(totalDurationSeconds\/15))",
     ),
   style: zod
     .string()
+    .max(generateStoryBodyStyleMax)
     .optional()
     .describe('Visual style name, e.g. \"Live Action Cinematic\"'),
   voiceoverLanguage: zod
-    .string()
+    .enum(["none", "english", "hindi", "hinglish"])
     .optional()
-    .describe('\"none\" | \"english\" | \"hindi\" | \"hinglish\"'),
+    .describe('Language to write the voiceover in, or \"none\" to skip'),
 });
 
 export const GenerateStoryResponse = zod.object({
@@ -78,6 +99,8 @@ export const GenerateStoryResponse = zod.object({
 /**
  * @summary Continue an existing story with new acts
  */
+export const continueStoryBodyDirectionMax = 2000;
+
 export const ContinueStoryBody = zod.object({
   existingStory: zod.object({
     title: zod.string(),
@@ -108,7 +131,7 @@ export const ContinueStoryBody = zod.object({
         "A short 2-3 sentence chat-style note from the AI explaining the most important creative choices in this story (the hook, the visual signature, the emotional arc, or what just changed if this was a refinement). Optional — older clients will fall back to a generic message.",
       ),
   }),
-  direction: zod.string(),
+  direction: zod.string().min(1).max(continueStoryBodyDirectionMax),
 });
 
 export const ContinueStoryResponse = zod.object({
@@ -144,6 +167,28 @@ export const ContinueStoryResponse = zod.object({
 /**
  * @summary Generate Seedance 2.0 video prompts for one part of the video
  */
+export const generateVideoPromptsBodyStyleMax = 120;
+
+export const generateVideoPromptsBodyDurationMax = 60;
+
+export const generateVideoPromptsBodyPartMax = 240;
+
+export const generateVideoPromptsBodyTotalPartsMax = 240;
+
+export const generateVideoPromptsBodyPreviousLastFrameMax = 4000;
+
+export const generateVideoPromptsBodyVoiceoverToneMax = 80;
+
+export const generateVideoPromptsBodyVoiceoverScriptMax = 4000;
+
+export const generateVideoPromptsBodyBgmStyleMax = 120;
+
+export const generateVideoPromptsBodyBgmTempoMax = 40;
+
+export const generateVideoPromptsBodyBgmInstrumentsItemMax = 60;
+
+export const generateVideoPromptsBodyBgmInstrumentsMax = 20;
+
 export const GenerateVideoPromptsBody = zod.object({
   story: zod.object({
     title: zod.string(),
@@ -174,12 +219,17 @@ export const GenerateVideoPromptsBody = zod.object({
         "A short 2-3 sentence chat-style note from the AI explaining the most important creative choices in this story (the hook, the visual signature, the emotional arc, or what just changed if this was a refinement). Optional — older clients will fall back to a generic message.",
       ),
   }),
-  style: zod.string(),
-  duration: zod.number().describe("Duration of this single part in seconds"),
-  part: zod.number(),
-  totalParts: zod.number(),
+  style: zod.string().min(1).max(generateVideoPromptsBodyStyleMax),
+  duration: zod
+    .number()
+    .min(1)
+    .max(generateVideoPromptsBodyDurationMax)
+    .describe("Duration of this single part in seconds"),
+  part: zod.number().min(1).max(generateVideoPromptsBodyPartMax),
+  totalParts: zod.number().min(1).max(generateVideoPromptsBodyTotalPartsMax),
   previousLastFrame: zod
     .string()
+    .max(generateVideoPromptsBodyPreviousLastFrameMax)
     .optional()
     .describe("lastFrameDescription from the previous part for continuation"),
   previousParts: zod
@@ -189,21 +239,31 @@ export const GenerateVideoPromptsBody = zod.object({
       "One compact text digest per already-generated part (parts 1..N-1), in order.\nEach entry should summarize that part's shots, voiceover script, effects,\nand last frame so the model has full memory of what was already shown\nand can avoid repetition \/ maintain cumulative continuity.\n",
     ),
   voiceoverLanguage: zod
-    .string()
+    .union([
+      zod.literal("english"),
+      zod.literal("hindi"),
+      zod.literal("hinglish"),
+      zod.literal(null),
+    ])
     .nullish()
-    .describe(
-      '\"english\" | \"hindi\" | \"hinglish\" — when set, Claude auto-writes a part-specific VO',
-    ),
-  voiceoverTone: zod.string().nullish(),
+    .describe("When set, Claude auto-writes a part-specific VO"),
+  voiceoverTone: zod
+    .string()
+    .max(generateVideoPromptsBodyVoiceoverToneMax)
+    .nullish(),
   voiceoverScript: zod
     .string()
+    .max(generateVideoPromptsBodyVoiceoverScriptMax)
     .nullish()
     .describe(
       "Optional pre-written script for this part. If absent and voiceoverLanguage is set, the model writes one.",
     ),
-  bgmStyle: zod.string().nullish(),
-  bgmTempo: zod.string().nullish(),
-  bgmInstruments: zod.array(zod.string()).optional(),
+  bgmStyle: zod.string().max(generateVideoPromptsBodyBgmStyleMax).nullish(),
+  bgmTempo: zod.string().max(generateVideoPromptsBodyBgmTempoMax).nullish(),
+  bgmInstruments: zod
+    .array(zod.string().max(generateVideoPromptsBodyBgmInstrumentsItemMax))
+    .max(generateVideoPromptsBodyBgmInstrumentsMax)
+    .optional(),
 });
 
 export const GenerateVideoPromptsResponse = zod.object({
@@ -435,6 +495,17 @@ export const EditVideoPromptsResponse = zod.object({
 /**
  * @summary Generate a Suno/Udio music brief for the project
  */
+export const generateMusicBriefBodyStyleMax = 120;
+
+export const generateMusicBriefBodyMoodMax = 200;
+
+export const generateMusicBriefBodyDurationMin = 5;
+export const generateMusicBriefBodyDurationMax = 3600;
+
+export const generateMusicBriefBodyEnergyLevelMax = 10;
+
+export const generateMusicBriefBodyTotalPartsMax = 240;
+
 export const GenerateMusicBriefBody = zod.object({
   story: zod.object({
     title: zod.string(),
@@ -465,13 +536,25 @@ export const GenerateMusicBriefBody = zod.object({
         "A short 2-3 sentence chat-style note from the AI explaining the most important creative choices in this story (the hook, the visual signature, the emotional arc, or what just changed if this was a refinement). Optional — older clients will fall back to a generic message.",
       ),
   }),
-  style: zod.string(),
-  mood: zod.string(),
-  duration: zod.number(),
-  language: zod.string(),
-  energyLevel: zod.number().optional().describe("1-10 scale"),
-  tempo: zod.string().optional().describe("slow | medium | fast | very_fast"),
-  totalParts: zod.number().optional(),
+  style: zod.string().min(1).max(generateMusicBriefBodyStyleMax),
+  mood: zod.string().min(1).max(generateMusicBriefBodyMoodMax),
+  duration: zod
+    .number()
+    .min(generateMusicBriefBodyDurationMin)
+    .max(generateMusicBriefBodyDurationMax),
+  language: zod.enum(["english", "hindi", "hinglish"]),
+  energyLevel: zod
+    .number()
+    .min(1)
+    .max(generateMusicBriefBodyEnergyLevelMax)
+    .optional()
+    .describe("1-10 scale"),
+  tempo: zod.enum(["slow", "medium", "fast", "very_fast"]).optional(),
+  totalParts: zod
+    .number()
+    .min(1)
+    .max(generateMusicBriefBodyTotalPartsMax)
+    .optional(),
 });
 
 export const GenerateMusicBriefResponse = zod.object({
@@ -497,6 +580,14 @@ export const GenerateMusicBriefResponse = zod.object({
 /**
  * @summary Generate a voiceover script in English, Hindi, or Hinglish for one video part
  */
+export const generateVoiceoverBodyStyleMax = 120;
+
+export const generateVoiceoverBodyToneMax = 60;
+
+export const generateVoiceoverBodyDurationMax = 600;
+
+export const generateVoiceoverBodyPartMax = 240;
+
 export const GenerateVoiceoverBody = zod.object({
   story: zod.object({
     title: zod.string(),
@@ -527,12 +618,12 @@ export const GenerateVoiceoverBody = zod.object({
         "A short 2-3 sentence chat-style note from the AI explaining the most important creative choices in this story (the hook, the visual signature, the emotional arc, or what just changed if this was a refinement). Optional — older clients will fall back to a generic message.",
       ),
   }),
-  style: zod.string().optional(),
-  language: zod.string(),
-  tone: zod.string(),
-  duration: zod.number(),
-  part: zod.number(),
-  pace: zod.string().optional().describe("slow | normal | fast"),
+  style: zod.string().max(generateVoiceoverBodyStyleMax).optional(),
+  language: zod.enum(["english", "hindi", "hinglish"]),
+  tone: zod.string().min(1).max(generateVoiceoverBodyToneMax),
+  duration: zod.number().min(1).max(generateVoiceoverBodyDurationMax),
+  part: zod.number().min(1).max(generateVoiceoverBodyPartMax),
+  pace: zod.enum(["slow", "normal", "fast"]).optional(),
 });
 
 export const GenerateVoiceoverResponse = zod.object({

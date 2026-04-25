@@ -38,23 +38,63 @@ export interface StoryResponse {
   commentary?: string;
 }
 
+/**
+ * Language to write the voiceover in, or "none" to skip
+ */
+export type StoryRequestVoiceoverLanguage =
+  (typeof StoryRequestVoiceoverLanguage)[keyof typeof StoryRequestVoiceoverLanguage];
+
+export const StoryRequestVoiceoverLanguage = {
+  none: "none",
+  english: "english",
+  hindi: "hindi",
+  hinglish: "hinglish",
+} as const;
+
 export interface StoryRequest {
+  /**
+   * @minLength 1
+   * @maxLength 4000
+   */
   brief: string;
+  /**
+   * @minLength 1
+   * @maxLength 80
+   */
   genre: string;
-  /** Total target duration in seconds (kept for backward compatibility, equivalent to totalDurationSeconds) */
+  /**
+   * Total target duration in seconds (kept for backward compatibility, equivalent to totalDurationSeconds)
+   * @minimum 5
+   * @maximum 3600
+   */
   duration: number;
-  /** Total target duration in seconds */
+  /**
+   * Total target duration in seconds
+   * @minimum 5
+   * @maximum 3600
+   */
   totalDurationSeconds?: number;
-  /** Number of 15-second video parts (Math.ceil(totalDurationSeconds/15)) */
+  /**
+   * Number of 15-second video parts (Math.ceil(totalDurationSeconds/15))
+   * @minimum 1
+   * @maximum 240
+   */
   partsCount?: number;
-  /** Visual style name, e.g. "Live Action Cinematic" */
+  /**
+   * Visual style name, e.g. "Live Action Cinematic"
+   * @maxLength 120
+   */
   style?: string;
-  /** "none" | "english" | "hindi" | "hinglish" */
-  voiceoverLanguage?: string;
+  /** Language to write the voiceover in, or "none" to skip */
+  voiceoverLanguage?: StoryRequestVoiceoverLanguage;
 }
 
 export interface ContinueStoryRequest {
   existingStory: StoryResponse;
+  /**
+   * @minLength 1
+   * @maxLength 2000
+   */
   direction: string;
 }
 
@@ -111,14 +151,46 @@ export interface VideoPromptsResponse {
   audioSummary?: VideoAudioSummary;
 }
 
+/**
+ * When set, Claude auto-writes a part-specific VO
+ */
+export type VideoPromptsRequestVoiceoverLanguage =
+  | (typeof VideoPromptsRequestVoiceoverLanguage)[keyof typeof VideoPromptsRequestVoiceoverLanguage]
+  | null;
+
+export const VideoPromptsRequestVoiceoverLanguage = {
+  english: "english",
+  hindi: "hindi",
+  hinglish: "hinglish",
+} as const;
+
 export interface VideoPromptsRequest {
   story: StoryResponse;
+  /**
+   * @minLength 1
+   * @maxLength 120
+   */
   style: string;
-  /** Duration of this single part in seconds */
+  /**
+   * Duration of this single part in seconds
+   * @minimum 1
+   * @maximum 60
+   */
   duration: number;
+  /**
+   * @minimum 1
+   * @maximum 240
+   */
   part: number;
+  /**
+   * @minimum 1
+   * @maximum 240
+   */
   totalParts: number;
-  /** lastFrameDescription from the previous part for continuation */
+  /**
+   * lastFrameDescription from the previous part for continuation
+   * @maxLength 4000
+   */
   previousLastFrame?: string;
   /** One compact text digest per already-generated part (parts 1..N-1), in order.
 Each entry should summarize that part's shots, voiceover script, effects,
@@ -126,13 +198,20 @@ and last frame so the model has full memory of what was already shown
 and can avoid repetition / maintain cumulative continuity.
  */
   previousParts?: string[];
-  /** "english" | "hindi" | "hinglish" — when set, Claude auto-writes a part-specific VO */
-  voiceoverLanguage?: string | null;
+  /** When set, Claude auto-writes a part-specific VO */
+  voiceoverLanguage?: VideoPromptsRequestVoiceoverLanguage;
+  /** @maxLength 80 */
   voiceoverTone?: string | null;
-  /** Optional pre-written script for this part. If absent and voiceoverLanguage is set, the model writes one. */
+  /**
+   * Optional pre-written script for this part. If absent and voiceoverLanguage is set, the model writes one.
+   * @maxLength 4000
+   */
   voiceoverScript?: string | null;
+  /** @maxLength 120 */
   bgmStyle?: string | null;
+  /** @maxLength 40 */
   bgmTempo?: string | null;
+  /** @maxItems 20 */
   bgmInstruments?: string[];
 }
 
@@ -184,16 +263,54 @@ export interface MusicBriefResponse {
   partBreakdown: MusicPartDirection[];
 }
 
+export type MusicBriefRequestLanguage =
+  (typeof MusicBriefRequestLanguage)[keyof typeof MusicBriefRequestLanguage];
+
+export const MusicBriefRequestLanguage = {
+  english: "english",
+  hindi: "hindi",
+  hinglish: "hinglish",
+} as const;
+
+export type MusicBriefRequestTempo =
+  (typeof MusicBriefRequestTempo)[keyof typeof MusicBriefRequestTempo];
+
+export const MusicBriefRequestTempo = {
+  slow: "slow",
+  medium: "medium",
+  fast: "fast",
+  very_fast: "very_fast",
+} as const;
+
 export interface MusicBriefRequest {
   story: StoryResponse;
+  /**
+   * @minLength 1
+   * @maxLength 120
+   */
   style: string;
+  /**
+   * @minLength 1
+   * @maxLength 200
+   */
   mood: string;
+  /**
+   * @minimum 5
+   * @maximum 3600
+   */
   duration: number;
-  language: string;
-  /** 1-10 scale */
+  language: MusicBriefRequestLanguage;
+  /**
+   * 1-10 scale
+   * @minimum 1
+   * @maximum 10
+   */
   energyLevel?: number;
-  /** slow | medium | fast | very_fast */
-  tempo?: string;
+  tempo?: MusicBriefRequestTempo;
+  /**
+   * @minimum 1
+   * @maximum 240
+   */
   totalParts?: number;
 }
 
@@ -216,13 +333,43 @@ export interface VoiceoverResponse {
   copyableScript: string;
 }
 
+export type VoiceoverRequestLanguage =
+  (typeof VoiceoverRequestLanguage)[keyof typeof VoiceoverRequestLanguage];
+
+export const VoiceoverRequestLanguage = {
+  english: "english",
+  hindi: "hindi",
+  hinglish: "hinglish",
+} as const;
+
+export type VoiceoverRequestPace =
+  (typeof VoiceoverRequestPace)[keyof typeof VoiceoverRequestPace];
+
+export const VoiceoverRequestPace = {
+  slow: "slow",
+  normal: "normal",
+  fast: "fast",
+} as const;
+
 export interface VoiceoverRequest {
   story: StoryResponse;
+  /** @maxLength 120 */
   style?: string;
-  language: string;
+  language: VoiceoverRequestLanguage;
+  /**
+   * @minLength 1
+   * @maxLength 60
+   */
   tone: string;
+  /**
+   * @minimum 1
+   * @maximum 600
+   */
   duration: number;
+  /**
+   * @minimum 1
+   * @maximum 240
+   */
   part: number;
-  /** slow | normal | fast */
-  pace?: string;
+  pace?: VoiceoverRequestPace;
 }

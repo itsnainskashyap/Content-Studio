@@ -1,7 +1,11 @@
 import { useEffect, useState } from "react";
 import { Loader2, Music, Play } from "lucide-react";
 import { toast } from "sonner";
-import { useGenerateMusicBrief } from "@workspace/api-client-react";
+import {
+  useGenerateMusicBrief,
+  type MusicBriefRequestTempo,
+  type MusicBriefRequestLanguage,
+} from "@workspace/api-client-react";
 import { storage, type Project } from "@/lib/storage";
 import { useApiCall, mutationCaller } from "@/lib/api-call";
 import { ErrorCard } from "@/components/error-card";
@@ -21,7 +25,7 @@ const STYLES = [
   "Metal / Intense",
 ];
 
-const TEMPOS: Array<{ key: string; label: string }> = [
+const TEMPOS: Array<{ key: MusicBriefRequestTempo; label: string }> = [
   { key: "slow", label: "Slow (60–80)" },
   { key: "medium", label: "Medium (90–110)" },
   { key: "fast", label: "Fast (120–140)" },
@@ -33,7 +37,7 @@ export default function MusicGenerator() {
   const [style, setStyle] = useState<string>("Cinematic Orchestra");
   const [customStyle, setCustomStyle] = useState("");
   const [energy, setEnergy] = useState(6);
-  const [tempo, setTempo] = useState("medium");
+  const [tempo, setTempo] = useState<MusicBriefRequestTempo>("medium");
   const [moodOverride, setMoodOverride] = useState("");
 
   const generateMusicMut = useGenerateMusicBrief();
@@ -64,7 +68,9 @@ export default function MusicGenerator() {
       style: usedStyle,
       mood: moodOverride || project.story.mood,
       duration: project.totalDuration,
-      language: project.genre.toLowerCase().includes("bollywood") ? "hindi" : "english",
+      language: (project.genre.toLowerCase().includes("bollywood")
+        ? "hindi"
+        : "english") as MusicBriefRequestLanguage,
       energyLevel: energy,
       tempo,
       totalParts,

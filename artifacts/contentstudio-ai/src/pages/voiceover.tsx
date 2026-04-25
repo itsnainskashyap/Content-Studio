@@ -1,7 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { Loader2, Play, Mic } from "lucide-react";
 import { toast } from "sonner";
-import { useGenerateVoiceover } from "@workspace/api-client-react";
+import {
+  useGenerateVoiceover,
+  type VoiceoverRequestLanguage,
+  type VoiceoverRequestPace,
+} from "@workspace/api-client-react";
 import {
   storage,
   TONES,
@@ -13,8 +17,8 @@ import { ErrorCard } from "@/components/error-card";
 import { CopyButton } from "@/components/copy-button";
 import { cn } from "@/lib/utils";
 
-type Lang = "english" | "hindi" | "hinglish";
-type Pace = "slow" | "normal" | "fast";
+type Lang = VoiceoverRequestLanguage;
+type Pace = VoiceoverRequestPace;
 
 const LANGS: Array<{ key: Lang; label: string; sub?: string }> = [
   { key: "hindi", label: "हिंदी", sub: "Hindi" },
