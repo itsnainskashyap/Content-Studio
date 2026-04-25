@@ -41,7 +41,12 @@ interface GenerationContextValue {
 
 const GenerationContext = createContext<GenerationContextValue | null>(null);
 
-const TIMEOUT_MS = 180_000;
+// Per-part client timeout. The server can take 60-150s for a richly detailed
+// part (especially when voiceover + BGM are included and the model produces
+// 14k+ chars of copyablePrompt). 240s gives a comfortable margin so the
+// AbortController doesn't fire on a slightly slower-than-average response,
+// while still protecting against an actually-stuck request.
+const TIMEOUT_MS = 240_000;
 
 function normalizeError(err: unknown): string {
   if (err && typeof err === "object" && "message" in err) {
