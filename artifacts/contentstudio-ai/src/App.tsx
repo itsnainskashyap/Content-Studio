@@ -1,5 +1,6 @@
 import { Switch, Route, Router as WouterRouter } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { setBaseUrl } from "@workspace/api-client-react";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Layout } from "@/components/layout";
@@ -12,7 +13,17 @@ import History from "@/pages/history";
 import Settings from "@/pages/settings";
 import NotFound from "@/pages/not-found";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: { retry: false },
+    mutations: { retry: false },
+  },
+});
+
+// Make every generated client URL (which starts with /api/...) get prefixed
+// with the artifact's base path so the dev/proxy server routes correctly.
+const basePrefix = (import.meta.env.BASE_URL || "/").replace(/\/$/, "");
+setBaseUrl(basePrefix || null);
 
 function Router() {
   return (
@@ -35,10 +46,16 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+        <WouterRouter base={basePrefix}>
           <Router />
         </WouterRouter>
-        <Toaster theme="dark" toastOptions={{ className: 'border-border bg-card text-foreground font-mono text-xs' }} />
+        <Toaster
+          theme="dark"
+          toastOptions={{
+            className:
+              "border-border bg-card text-foreground font-mono text-xs",
+          }}
+        />
       </TooltipProvider>
     </QueryClientProvider>
   );

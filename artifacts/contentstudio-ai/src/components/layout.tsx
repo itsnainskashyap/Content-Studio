@@ -18,6 +18,72 @@ interface LayoutProps {
   children: ReactNode;
 }
 
+const ROUTE_LABELS: Record<string, string> = {
+  "/": "Dashboard",
+  "/story": "Story Builder",
+  "/generate": "Video Prompts",
+  "/music": "Music Brief",
+  "/voiceover": "Voiceover",
+  "/history": "History",
+  "/settings": "Settings",
+};
+
+function Topbar({ location }: { location: string }) {
+  const [currentTitle, setCurrentTitle] = useState<string | null>(null);
+
+  useEffect(() => {
+    const refresh = () => {
+      const proj = storage.getCurrentProject();
+      setCurrentTitle(proj ? proj.title : null);
+    };
+    refresh();
+    window.addEventListener("storage", refresh);
+    window.addEventListener("cs:projects-changed", refresh as EventListener);
+    return () => {
+      window.removeEventListener("storage", refresh);
+      window.removeEventListener(
+        "cs:projects-changed",
+        refresh as EventListener,
+      );
+    };
+  }, [location]);
+
+  const routeLabel =
+    ROUTE_LABELS[location] ??
+    Object.entries(ROUTE_LABELS).find(
+      ([k]) => k !== "/" && location.startsWith(k),
+    )?.[1] ??
+    "Page";
+
+  return (
+    <div className="hidden md:flex sticky top-0 z-20 h-12 items-center px-6 border-b border-border bg-background/95 backdrop-blur-sm">
+      <nav
+        className="flex items-center gap-2 text-[11px] font-mono uppercase tracking-widest text-muted-foreground"
+        aria-label="Breadcrumb"
+      >
+        <Link href="/" className="hover:text-foreground" data-testid="bc-home">
+          ContentStudio
+        </Link>
+        <span className="text-muted-foreground/40">/</span>
+        <span className="text-foreground" data-testid="bc-section">
+          {routeLabel}
+        </span>
+        {currentTitle && (
+          <>
+            <span className="text-muted-foreground/40">/</span>
+            <span
+              className="text-primary normal-case tracking-normal font-sans truncate max-w-[280px]"
+              data-testid="bc-project"
+            >
+              {currentTitle}
+            </span>
+          </>
+        )}
+      </nav>
+    </div>
+  );
+}
+
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/story", label: "Story Builder", icon: BookOpen },
@@ -131,6 +197,12 @@ export function Layout({ children }: LayoutProps) {
                   {p.style ?? "no style"} · {p.parts.length} part
                   {p.parts.length === 1 ? "" : "s"}
                 </div>
+                <div className="text-[10px] text-muted-foreground/60 font-mono uppercase tracking-wider">
+                  {new Date(p.updatedAt).toLocaleDateString(undefined, {
+                    month: "short",
+                    day: "numeric",
+                  })}
+                </div>
               </Link>
             </li>
           ))}
@@ -161,6 +233,7 @@ export function Layout({ children }: LayoutProps) {
       </aside>
 
       <main className="flex-1 overflow-y-auto bg-background pb-20 md:pb-0">
+        <Topbar location={location} />
         {children}
       </main>
 

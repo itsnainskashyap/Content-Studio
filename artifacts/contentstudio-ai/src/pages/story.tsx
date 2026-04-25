@@ -2,20 +2,14 @@ import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { Loader2, Save, Sparkles, ArrowRight, BookOpen } from "lucide-react";
 import { toast } from "sonner";
-import type {
-  StoryRequest,
-  StoryResponse,
-  ContinueStoryRequest,
+import {
+  useGenerateStory,
+  useContinueStory,
 } from "@workspace/api-client-react";
 import { storage, createEmptyProject, GENRES, type Project } from "@/lib/storage";
-import { useApiCall, postJson } from "@/lib/api-call";
+import { useApiCall, mutationCaller } from "@/lib/api-call";
 import { ErrorCard } from "@/components/error-card";
 import { CopyButton } from "@/components/copy-button";
-
-const generateStoryFn = postJson<StoryRequest, StoryResponse>("/generate-story");
-const continueStoryFn = postJson<ContinueStoryRequest, StoryResponse>(
-  "/continue-story",
-);
 
 const DURATIONS = [5, 10, 15, 20, 30, 60];
 
@@ -27,8 +21,12 @@ export default function StoryBuilder() {
   const [project, setProject] = useState<Project | null>(null);
   const [direction, setDirection] = useState("");
 
-  const storyCall = useApiCall(generateStoryFn);
-  const continueCall = useApiCall(continueStoryFn);
+  const generateStoryMut = useGenerateStory();
+  const continueStoryMut = useContinueStory();
+  const storyCall = useApiCall(mutationCaller(generateStoryMut.mutateAsync));
+  const continueCall = useApiCall(
+    mutationCaller(continueStoryMut.mutateAsync),
+  );
 
   useEffect(() => {
     const current = storage.getCurrentProject();

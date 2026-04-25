@@ -9,23 +9,16 @@ import {
   Star,
 } from "lucide-react";
 import { toast } from "sonner";
-import type {
-  VideoPromptsRequest,
-  VideoPromptsResponse,
-} from "@workspace/api-client-react";
+import { useGenerateVideoPrompts } from "@workspace/api-client-react";
 import {
   storage,
   STYLES,
   type Project,
   type ProjectPart,
 } from "@/lib/storage";
-import { useApiCall, postJson } from "@/lib/api-call";
+import { useApiCall, mutationCaller } from "@/lib/api-call";
 import { ErrorCard } from "@/components/error-card";
 import { CopyButton } from "@/components/copy-button";
-
-const generateVideoPromptsFn = postJson<VideoPromptsRequest, VideoPromptsResponse>(
-  "/generate-video-prompts",
-);
 
 const PART_DURATIONS = [5, 10, 15, 20];
 
@@ -38,7 +31,8 @@ export default function PromptGenerator() {
   const [progress, setProgress] = useState<{ current: number; total: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const partCall = useApiCall(generateVideoPromptsFn);
+  const generatePromptsMut = useGenerateVideoPrompts();
+  const partCall = useApiCall(mutationCaller(generatePromptsMut.mutateAsync));
 
   useEffect(() => {
     const current = storage.getCurrentProject();

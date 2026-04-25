@@ -1,18 +1,11 @@
 import { useEffect, useState } from "react";
 import { Loader2, Music, Sparkles } from "lucide-react";
 import { toast } from "sonner";
-import type {
-  MusicBriefRequest,
-  MusicBriefResponse,
-} from "@workspace/api-client-react";
+import { useGenerateMusicBrief } from "@workspace/api-client-react";
 import { storage, type Project } from "@/lib/storage";
-import { useApiCall, postJson } from "@/lib/api-call";
+import { useApiCall, mutationCaller } from "@/lib/api-call";
 import { ErrorCard } from "@/components/error-card";
 import { CopyButton } from "@/components/copy-button";
-
-const generateMusicFn = postJson<MusicBriefRequest, MusicBriefResponse>(
-  "/generate-music-brief",
-);
 
 const STYLES = [
   "Cinematic Orchestra",
@@ -43,7 +36,8 @@ export default function MusicGenerator() {
   const [tempo, setTempo] = useState("medium");
   const [moodOverride, setMoodOverride] = useState("");
 
-  const call = useApiCall(generateMusicFn);
+  const generateMusicMut = useGenerateMusicBrief();
+  const call = useApiCall(mutationCaller(generateMusicMut.mutateAsync));
 
   useEffect(() => {
     const cur = storage.getCurrentProject();

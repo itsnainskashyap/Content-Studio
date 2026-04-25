@@ -11,11 +11,15 @@ import { toast } from "sonner";
 import { storage, type Project } from "@/lib/storage";
 
 type SortKey = "newest" | "oldest" | "most_shots";
+type DateRange = "all" | "today" | "week" | "month";
+type DurationRange = "all" | "short" | "medium" | "long";
 
 export default function History() {
   const [, navigate] = useLocation();
   const [projects, setProjects] = useState<Project[]>([]);
   const [filterStyle, setFilterStyle] = useState<string>("__all");
+  const [filterDuration, setFilterDuration] = useState<DurationRange>("all");
+  const [filterDate, setFilterDate] = useState<DateRange>("all");
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("newest");
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
@@ -43,6 +47,24 @@ export default function History() {
     if (filterStyle !== "__all") {
       list = list.filter((p) => p.style === filterStyle);
     }
+    if (filterDuration !== "all") {
+      list = list.filter((p) => {
+        if (filterDuration === "short") return p.totalDuration <= 15;
+        if (filterDuration === "medium")
+          return p.totalDuration > 15 && p.totalDuration <= 30;
+        return p.totalDuration > 30;
+      });
+    }
+    if (filterDate !== "all") {
+      const now = Date.now();
+      const cutoff =
+        filterDate === "today"
+          ? now - 24 * 60 * 60 * 1000
+          : filterDate === "week"
+            ? now - 7 * 24 * 60 * 60 * 1000
+            : now - 30 * 24 * 60 * 60 * 1000;
+      list = list.filter((p) => new Date(p.updatedAt).getTime() >= cutoff);
+    }
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       list = list.filter(
@@ -59,7 +81,7 @@ export default function History() {
       return storage.totalShots(b) - storage.totalShots(a);
     });
     return list;
-  }, [projects, filterStyle, search, sortKey]);
+  }, [projects, filterStyle, filterDuration, filterDate, search, sortKey]);
 
   const open = (p: Project) => {
     storage.setCurrentProjectId(p.id);
@@ -120,8 +142,8 @@ export default function History() {
         </div>
       ) : (
         <>
-          <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div className="relative">
+          <div className="mt-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
+            <div className="relative lg:col-span-2">
               <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
               <input
                 type="text"
@@ -146,9 +168,33 @@ export default function History() {
               ))}
             </select>
             <select
+              value={filterDuration}
+              onChange={(e) =>
+                setFilterDuration(e.target.value as DurationRange)
+              }
+              className="bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:border-primary"
+              data-testid="select-filter-duration"
+            >
+              <option value="all">Any duration</option>
+              <option value="short">Short (≤15s)</option>
+              <option value="medium">Medium (16–30s)</option>
+              <option value="long">Long (&gt;30s)</option>
+            </select>
+            <select
+              value={filterDate}
+              onChange={(e) => setFilterDate(e.target.value as DateRange)}
+              className="bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:border-primary"
+              data-testid="select-filter-date"
+            >
+              <option value="all">Any date</option>
+              <option value="today">Last 24 hours</option>
+              <option value="week">Last 7 days</option>
+              <option value="month">Last 30 days</option>
+            </select>
+            <select
               value={sortKey}
               onChange={(e) => setSortKey(e.target.value as SortKey)}
-              className="bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:border-primary"
+              className="bg-background border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:border-primary lg:col-span-1"
               data-testid="select-sort"
             >
               <option value="newest">Newest first</option>

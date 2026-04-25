@@ -1,24 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
 import { Loader2, Sparkles, Mic } from "lucide-react";
 import { toast } from "sonner";
-import type {
-  VoiceoverRequest,
-  VoiceoverResponse,
-} from "@workspace/api-client-react";
+import { useGenerateVoiceover } from "@workspace/api-client-react";
 import {
   storage,
   TONES,
   type Project,
   type ProjectVoiceoverPart,
 } from "@/lib/storage";
-import { useApiCall, postJson } from "@/lib/api-call";
+import { useApiCall, mutationCaller } from "@/lib/api-call";
 import { ErrorCard } from "@/components/error-card";
 import { CopyButton } from "@/components/copy-button";
 import { cn } from "@/lib/utils";
-
-const generateVoFn = postJson<VoiceoverRequest, VoiceoverResponse>(
-  "/generate-voiceover",
-);
 
 type Lang = "english" | "hindi" | "hinglish";
 type Pace = "slow" | "normal" | "fast";
@@ -42,7 +35,8 @@ export default function VoiceoverGenerator() {
   const [voParts, setVoParts] = useState<ProjectVoiceoverPart[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  const call = useApiCall(generateVoFn);
+  const generateVoMut = useGenerateVoiceover();
+  const call = useApiCall(mutationCaller(generateVoMut.mutateAsync));
 
   useEffect(() => {
     const cur = storage.getCurrentProject();
