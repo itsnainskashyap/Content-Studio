@@ -16,25 +16,32 @@ export interface GenerationConfig {
 
 export interface GenerationJob {
   projectId: string;
-  status: "running" | "done" | "error" | "cancelled";
+  // running       = currently generating ONE part
+  // awaiting_next = the previous part finished; user must click "Generate next prompt"
+  // done          = all parts generated
+  status: "running" | "awaiting_next" | "done" | "error" | "cancelled";
   total: number;
-  current: number;
+  current: number; // number of parts completed so far
   parts: ProjectPart[];
   error: string | null;
   config: GenerationConfig;
   startedAt: number;
+  previousLastFrame?: string;
 }
 
 interface GenerationContextValue {
   getJob: (projectId: string) => GenerationJob | null;
+  /** Begin a new run and generate the FIRST part only. */
   startGeneration: (config: GenerationConfig) => void;
+  /** Generate the next single part using the existing job's config. */
+  generateNextPart: (projectId: string) => void;
   cancel: (projectId: string) => void;
   clear: (projectId: string) => void;
 }
 
 const GenerationContext = createContext<GenerationContextValue | null>(null);
 
-const TIMEOUT_MS = 60_000;
+const TIMEOUT_MS = 180_000;
 
 function normalizeError(err: unknown): string {
   if (err && typeof err === "object" && "message" in err) {
@@ -66,114 +73,133 @@ export function GenerationProvider({ children }: { children: ReactNode }) {
     setJobs((s) => ({ ...s, [projectId]: next }));
   }, []);
 
+  // Generates ONE part (the next one) using the job already stored for this
+  // project. Caller is responsible for ensuring a job exists.
+  const runOnePart = useCallback(
+    async (projectId: string) => {
+      const job = jobsRef.current[projectId];
+      if (!job) return;
+      if (job.status === "running") return; // already running
+      if (job.current >= job.total) return; // nothing left
+      const partNumber = job.current + 1;
+      const config = job.config;
+
+      // Cancel any previous controller for safety
+      const prev = controllersRef.current[projectId];
+      if (prev) prev.abort();
+
+      const controller = new AbortController();
+      controllersRef.current[projectId] = controller;
+      updateJob(projectId, { status: "running", error: null });
+
+      const partTimer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+      try {
+        const result = await generateVideoPrompts(
+          {
+            story: config.story,
+            style: config.style,
+            duration: config.partDuration,
+            part: partNumber,
+            totalParts: config.partsCount,
+            previousLastFrame: job.previousLastFrame,
+            voiceoverLanguage:
+              config.voiceoverLanguage === "none" ? null : config.voiceoverLanguage,
+            voiceoverTone:
+              config.voiceoverLanguage === "none" ? null : config.voiceoverTone,
+            bgmStyle: config.bgm?.name ?? null,
+            bgmTempo: config.bgm?.tempo ?? null,
+            bgmInstruments: config.bgm?.instruments ?? [],
+          },
+          { signal: controller.signal },
+        );
+        clearTimeout(partTimer);
+
+        const part: ProjectPart = {
+          ...result,
+          partNumber,
+          voiceoverLanguage:
+            config.voiceoverLanguage === "none" ? null : config.voiceoverLanguage,
+          bgmStyle: config.bgm?.name ?? null,
+          bgmTempo: config.bgm?.tempo ?? null,
+        };
+        const collected = [...job.parts, part];
+
+        // Persist incrementally
+        const proj = storage.getProject(projectId);
+        if (proj) {
+          const saved = storage.saveProject({
+            ...proj,
+            style: config.style,
+            duration: config.partDuration,
+            partsCount: config.partsCount,
+            voiceoverLanguage: config.voiceoverLanguage,
+            parts: [...collected],
+          });
+          storage.setCurrentProjectId(saved.id);
+          window.dispatchEvent(new Event("cs:projects-changed"));
+        }
+
+        const isDone = partNumber >= config.partsCount;
+        updateJob(projectId, {
+          parts: collected,
+          current: partNumber,
+          previousLastFrame: result.lastFrameDescription,
+          status: isDone ? "done" : "awaiting_next",
+        });
+      } catch (err) {
+        clearTimeout(partTimer);
+        if (controller.signal.aborted) {
+          updateJob(projectId, { status: "cancelled" });
+        } else {
+          updateJob(projectId, {
+            status: "error",
+            error: normalizeError(err),
+          });
+        }
+      } finally {
+        if (controllersRef.current[projectId] === controller) {
+          delete controllersRef.current[projectId];
+        }
+      }
+    },
+    [updateJob],
+  );
+
   const startGeneration = useCallback(
     (config: GenerationConfig) => {
       // Cancel any previous run for this project
       const prev = controllersRef.current[config.projectId];
       if (prev) prev.abort();
 
-      const controller = new AbortController();
-      controllersRef.current[config.projectId] = controller;
-
       const job: GenerationJob = {
         projectId: config.projectId,
-        status: "running",
+        status: "awaiting_next",
         total: config.partsCount,
         current: 0,
         parts: [],
         error: null,
         config,
         startedAt: Date.now(),
+        previousLastFrame: undefined,
       };
       jobsRef.current[config.projectId] = job;
       setJobs((s) => ({ ...s, [config.projectId]: job }));
 
-      (async () => {
-        const collected: ProjectPart[] = [];
-        let previousLastFrame: string | undefined = undefined;
-
-        for (let i = 1; i <= config.partsCount; i++) {
-          if (controller.signal.aborted) {
-            updateJob(config.projectId, { status: "cancelled" });
-            if (controllersRef.current[config.projectId] === controller) {
-              delete controllersRef.current[config.projectId];
-            }
-            return;
-          }
-          updateJob(config.projectId, { current: i });
-          const partTimer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-          try {
-            const result = await generateVideoPrompts(
-              {
-                story: config.story,
-                style: config.style,
-                duration: config.partDuration,
-                part: i,
-                totalParts: config.partsCount,
-                previousLastFrame,
-                voiceoverLanguage:
-                  config.voiceoverLanguage === "none" ? null : config.voiceoverLanguage,
-                voiceoverTone:
-                  config.voiceoverLanguage === "none" ? null : config.voiceoverTone,
-                bgmStyle: config.bgm?.name ?? null,
-                bgmTempo: config.bgm?.tempo ?? null,
-                bgmInstruments: config.bgm?.instruments ?? [],
-              },
-              { signal: controller.signal },
-            );
-            clearTimeout(partTimer);
-
-            const part: ProjectPart = {
-              ...result,
-              partNumber: i,
-              voiceoverLanguage:
-                config.voiceoverLanguage === "none" ? null : config.voiceoverLanguage,
-              bgmStyle: config.bgm?.name ?? null,
-              bgmTempo: config.bgm?.tempo ?? null,
-            };
-            collected.push(part);
-            previousLastFrame = result.lastFrameDescription;
-
-            // Persist incrementally so navigating away doesn't lose finished parts
-            const proj = storage.getProject(config.projectId);
-            if (proj) {
-              const saved = storage.saveProject({
-                ...proj,
-                style: config.style,
-                duration: config.partDuration,
-                partsCount: config.partsCount,
-                voiceoverLanguage: config.voiceoverLanguage,
-                parts: [...collected],
-              });
-              storage.setCurrentProjectId(saved.id);
-              window.dispatchEvent(new Event("cs:projects-changed"));
-            }
-            updateJob(config.projectId, { parts: [...collected] });
-          } catch (err) {
-            clearTimeout(partTimer);
-            if (controller.signal.aborted) {
-              updateJob(config.projectId, { status: "cancelled" });
-            } else {
-              updateJob(config.projectId, {
-                status: "error",
-                error: normalizeError(err),
-              });
-            }
-            // Drop reference to the controller for any terminal path
-            if (controllersRef.current[config.projectId] === controller) {
-              delete controllersRef.current[config.projectId];
-            }
-            return;
-          }
-        }
-
-        updateJob(config.projectId, { status: "done", current: config.partsCount });
-        if (controllersRef.current[config.projectId] === controller) {
-          delete controllersRef.current[config.projectId];
-        }
-      })();
+      // Kick off the FIRST part automatically
+      void runOnePart(config.projectId);
     },
-    [updateJob],
+    [runOnePart],
+  );
+
+  const generateNextPart = useCallback(
+    (projectId: string) => {
+      const job = jobsRef.current[projectId];
+      if (!job) return;
+      if (job.status === "running") return;
+      if (job.current >= job.total) return;
+      void runOnePart(projectId);
+    },
+    [runOnePart],
   );
 
   const cancel = useCallback((projectId: string) => {
@@ -211,7 +237,7 @@ export function GenerationProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <GenerationContext.Provider value={{ getJob, startGeneration, cancel, clear }}>
+    <GenerationContext.Provider value={{ getJob, startGeneration, generateNextPart, cancel, clear }}>
       {children}
     </GenerationContext.Provider>
   );

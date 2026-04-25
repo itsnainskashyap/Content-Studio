@@ -118,16 +118,21 @@ export function InlinePrompts({
   } | null>(job?.config.bgm ?? initialBgm);
   const [bgmPanelOpen, setBgmPanelOpen] = useState(false);
 
-  // Mirror finished parts back into local project state when a job completes
+  // Mirror finished parts back into local project state on every part completion
   useEffect(() => {
     if (!job) return;
     if (job.parts.length > 0 && job.parts.length !== project.parts.length) {
       const fresh = storage.getProject(project.id);
       if (fresh) onProjectUpdated(fresh);
     }
+    if (job.status === "awaiting_next" && job.parts.length > 0) {
+      toast.success(
+        `Part ${job.parts.length} ready · click "Generate next prompt" for part ${job.parts.length + 1}`,
+      );
+    }
     if (job.status === "done") {
       toast.success(
-        `Generated ${job.parts.length} part${job.parts.length === 1 ? "" : "s"}`,
+        `All ${job.parts.length} parts generated`,
       );
       const fresh = storage.getProject(project.id);
       if (fresh) onProjectUpdated(fresh);
@@ -136,11 +141,13 @@ export function InlinePrompts({
   }, [job?.status, job?.parts.length]);
 
   const generating = job?.status === "running";
-  const parts: ProjectPart[] = generating
-    ? job?.parts ?? []
-    : project.parts.length > 0
-      ? project.parts
-      : (job?.parts ?? []);
+  const awaitingNext = job?.status === "awaiting_next";
+  const parts: ProjectPart[] = job?.parts && job.parts.length > 0
+    ? job.parts
+    : project.parts;
+  const nextPartNumber = (job?.current ?? parts.length) + 1;
+  const totalParts = job?.total ?? partsCount;
+  const allDone = job?.status === "done" || (parts.length >= totalParts && parts.length > 0);
 
   const startGeneration = () => {
     if (!project.story) {
@@ -157,6 +164,10 @@ export function InlinePrompts({
       voiceoverTone: voTone,
       bgm,
     });
+  };
+
+  const generateNext = () => {
+    generation.generateNextPart(project.id);
   };
 
   // Auto-start generation once when the panel mounts due to "Finalize" — only
@@ -448,17 +459,36 @@ export function InlinePrompts({
         )}
       </div>
 
-      {/* Generate / Stop button */}
+      {/* Generate / Next / Stop button */}
       <div className="px-6 py-5 border-b border-border flex flex-wrap items-center gap-3">
-        {!generating && (
+        {!generating && !awaitingNext && parts.length === 0 && (
           <button
             type="button"
             onClick={startGeneration}
             className="inline-flex items-center gap-2 px-5 py-3 rounded-md bg-primary text-black font-mono text-xs uppercase tracking-widest hover:bg-[#D4EB3A] transition-colors"
             data-testid="button-generate-prompts-inline"
           >
-            <Play className="w-4 h-4" />{" "}
-            {parts.length > 0 ? "Regenerate" : `Generate ${partsCount} prompt${partsCount === 1 ? "" : "s"}`}
+            <Play className="w-4 h-4" /> Generate part 1 of {partsCount}
+          </button>
+        )}
+        {!generating && awaitingNext && nextPartNumber <= totalParts && (
+          <button
+            type="button"
+            onClick={generateNext}
+            className="relative inline-flex items-center gap-2 px-5 py-3 rounded-md bg-primary text-black font-mono text-xs uppercase tracking-widest hover:bg-[#D4EB3A] hover:shadow-[0_8px_24px_-8px_rgba(232,255,71,0.6)] hover:-translate-y-0.5 transition-all border-2 border-primary"
+            data-testid="button-generate-next-prompt"
+          >
+            <Play className="w-4 h-4" /> Generate next prompt — part {nextPartNumber} of {totalParts}
+          </button>
+        )}
+        {!generating && allDone && parts.length > 0 && (
+          <button
+            type="button"
+            onClick={startGeneration}
+            className="inline-flex items-center gap-2 px-5 py-3 rounded-md border border-border font-mono text-xs uppercase tracking-widest hover:border-primary hover:text-primary transition-colors"
+            data-testid="button-regenerate-prompts-inline"
+          >
+            <Play className="w-4 h-4" /> Regenerate from part 1
           </button>
         )}
         {generating && (
@@ -469,7 +499,7 @@ export function InlinePrompts({
               className="inline-flex items-center gap-2 px-5 py-3 rounded-md bg-primary/40 text-black font-mono text-xs uppercase tracking-widest"
               data-testid="button-generate-prompts-inline"
             >
-              <Loader2 className="w-4 h-4 animate-spin" /> Generating…
+              <Loader2 className="w-4 h-4 animate-spin" /> Generating part {(job?.current ?? 0) + 1} of {totalParts}…
             </button>
             <button
               type="button"
@@ -517,16 +547,18 @@ export function InlinePrompts({
         )}
       </div>
 
-      {generating && job && (
+      {job && (generating || awaitingNext) && (
         <div className="px-6 py-4 border-b border-border">
           <div className="text-xs font-mono uppercase tracking-widest text-muted-foreground">
-            Generating part {job.current} of {job.total}…
+            {generating
+              ? `Generating part ${job.current + 1} of ${job.total}…`
+              : `${job.current} of ${job.total} parts ready`}
           </div>
           <div className="mt-2 h-1 bg-secondary/40 rounded">
             <div
               className="h-1 bg-primary rounded transition-all"
               style={{
-                width: `${(job.current / job.total) * 100}%`,
+                width: `${((generating ? job.current + 1 : job.current) / job.total) * 100}%`,
               }}
             />
           </div>
@@ -535,7 +567,10 @@ export function InlinePrompts({
 
       {job?.status === "error" && job.error && (
         <div className="px-6 py-4 border-b border-border">
-          <ErrorCard message={job.error} onRetry={startGeneration} />
+          <ErrorCard
+            message={job.error}
+            onRetry={job.parts.length > 0 ? generateNext : startGeneration}
+          />
         </div>
       )}
 
