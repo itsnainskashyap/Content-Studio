@@ -111,15 +111,15 @@ router.post("/continue-story", async (req: Request, res: Response) => {
     return;
   }
   const { existingStory, direction } = parsed.data;
-  const userPrompt = `Continue the following story by adding 1-3 new acts in the requested direction. Return the FULL story including the original acts plus the new ones, with sequential actNumber values.
+  const userPrompt = `Apply the writer's instruction to the existing story. Honor the instruction LITERALLY — append, refine a specific act, change a character, change tone/mood/title/synopsis, full rewrite, or fix a single detail. Preserve any field the writer did not mention. Return the COMPLETE updated story as JSON with sequential actNumber values starting at 1.
 
 EXISTING STORY:
 ${describeStory(existingStory)}
 
-DIRECTION FOR CONTINUATION:
+WRITER'S INSTRUCTION:
 ${direction}
 
-Output the full extended story as JSON.`;
+Output the full updated story as JSON.`;
 
   try {
     const result = await generateJson({

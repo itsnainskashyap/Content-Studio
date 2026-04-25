@@ -1,24 +1,22 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Loader2,
   Sparkles,
-  Check,
-  Play,
   Star,
   ArrowDownToLine,
   Volume2,
   Music as MusicIcon,
   X,
+  StopCircle,
 } from "lucide-react";
 import { toast } from "sonner";
-import { useGenerateVideoPrompts } from "@workspace/api-client-react";
 import {
   storage,
   type Project,
   type ProjectPart,
   type VoiceoverLanguage,
 } from "@/lib/storage";
-import { useApiCall, mutationCaller } from "@/lib/api-call";
+import { useGeneration } from "@/lib/generation-context";
 import { ErrorCard } from "@/components/error-card";
 import { CopyButton } from "@/components/copy-button";
 
@@ -80,6 +78,12 @@ interface Props {
   partsCount: number;
   initialVoiceoverLanguage: VoiceoverLanguage;
   onProjectUpdated: (p: Project) => void;
+  /**
+   * When true, automatically kick off generation once after mount if no job
+   * exists yet for this project and no parts have been generated. Used by the
+   * Story Builder's "Finalize" → generate flow.
+   */
+  autoStart?: boolean;
 }
 
 export function InlinePrompts({
@@ -88,10 +92,18 @@ export function InlinePrompts({
   partsCount,
   initialVoiceoverLanguage,
   onProjectUpdated,
+  autoStart = false,
 }: Props) {
   const partDuration = 15;
-  const [voLanguage, setVoLanguage] = useState<VoiceoverLanguage>(initialVoiceoverLanguage);
-  const [voTone, setVoTone] = useState<string>("cinematic");
+  const generation = useGeneration();
+  const job = generation.getJob(project.id);
+
+  const [voLanguage, setVoLanguage] = useState<VoiceoverLanguage>(
+    job?.config.voiceoverLanguage ?? initialVoiceoverLanguage,
+  );
+  const [voTone, setVoTone] = useState<string>(
+    job?.config.voiceoverTone ?? "cinematic",
+  );
   const [voPanelOpen, setVoPanelOpen] = useState(false);
   const initialBgm = useMemo(
     () => suggestBgm(project.story?.mood ?? ""),
@@ -101,91 +113,68 @@ export function InlinePrompts({
     name: string;
     tempo: string;
     instruments: string[];
-  } | null>(initialBgm);
+  } | null>(job?.config.bgm ?? initialBgm);
   const [bgmPanelOpen, setBgmPanelOpen] = useState(false);
 
-  const [generating, setGenerating] = useState(false);
-  const [parts, setParts] = useState<ProjectPart[]>(
-    project.parts.length > 0 ? project.parts : [],
-  );
-  const [progress, setProgress] = useState<{
-    current: number;
-    total: number;
-  } | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const generatePromptsMut = useGenerateVideoPrompts();
-  const partCall = useApiCall(mutationCaller(generatePromptsMut.mutateAsync));
-
-  // Reset stored parts if user changes critical inputs after generation
+  // Mirror finished parts back into local project state when a job completes
   useEffect(() => {
-    if (!generating && parts.length > 0) {
-      // keep parts as-is when user is just looking; only regen on explicit click
+    if (!job) return;
+    if (job.parts.length > 0 && job.parts.length !== project.parts.length) {
+      const fresh = storage.getProject(project.id);
+      if (fresh) onProjectUpdated(fresh);
     }
-  }, [generating, parts.length]);
+    if (job.status === "done") {
+      toast.success(
+        `Generated ${job.parts.length} part${job.parts.length === 1 ? "" : "s"}`,
+      );
+      const fresh = storage.getProject(project.id);
+      if (fresh) onProjectUpdated(fresh);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [job?.status, job?.parts.length]);
 
-  const startGeneration = async () => {
+  const generating = job?.status === "running";
+  const parts: ProjectPart[] = generating
+    ? job?.parts ?? []
+    : project.parts.length > 0
+      ? project.parts
+      : (job?.parts ?? []);
+
+  const startGeneration = () => {
     if (!project.story) {
       toast.error("Save the story first");
       return;
     }
-    setGenerating(true);
-    setError(null);
-    setParts([]);
-
-    let previousLastFrame: string | undefined = undefined;
-    const collected: ProjectPart[] = [];
-
-    for (let i = 1; i <= partsCount; i++) {
-      setProgress({ current: i, total: partsCount });
-      const result = await partCall.run({
-        story: project.story,
-        style,
-        duration: partDuration,
-        part: i,
-        totalParts: partsCount,
-        previousLastFrame,
-        voiceoverLanguage: voLanguage === "none" ? null : voLanguage,
-        voiceoverTone: voLanguage === "none" ? null : voTone,
-        bgmStyle: bgm?.name ?? null,
-        bgmTempo: bgm?.tempo ?? null,
-        bgmInstruments: bgm?.instruments ?? [],
-      });
-      if (!result) {
-        setError(partCall.error ?? "Generation failed");
-        setGenerating(false);
-        setProgress(null);
-        return;
-      }
-      const part: ProjectPart = {
-        ...result,
-        partNumber: i,
-        voiceoverLanguage: voLanguage === "none" ? null : voLanguage,
-        bgmStyle: bgm?.name ?? null,
-        bgmTempo: bgm?.tempo ?? null,
-      };
-      collected.push(part);
-      setParts([...collected]);
-      previousLastFrame = result.lastFrameDescription;
-    }
-
-    const updated: Project = {
-      ...project,
+    generation.startGeneration({
+      projectId: project.id,
+      story: project.story,
       style,
-      duration: partDuration,
       partsCount,
+      partDuration,
       voiceoverLanguage: voLanguage,
-      parts: collected,
-    };
-    const saved = storage.saveProject(updated);
-    storage.setCurrentProjectId(saved.id);
-    onProjectUpdated(saved);
-    window.dispatchEvent(new Event("cs:projects-changed"));
-    setGenerating(false);
-    setProgress(null);
-    toast.success(
-      `Generated ${collected.length} part${collected.length === 1 ? "" : "s"}`,
-    );
+      voiceoverTone: voTone,
+      bgm,
+    });
+  };
+
+  // Auto-start generation once when the panel mounts due to "Finalize" — only
+  // if there's no existing job for this project AND no parts already saved.
+  // Guarded by a ref so re-renders don't re-trigger.
+  const autoStartedRef = useRef(false);
+  useEffect(() => {
+    if (!autoStart) return;
+    if (autoStartedRef.current) return;
+    if (job) return;
+    if (project.parts.length > 0) return;
+    if (!project.story) return;
+    autoStartedRef.current = true;
+    startGeneration();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoStart, project.id]);
+
+  const cancelGeneration = () => {
+    generation.cancel(project.id);
+    toast.message("Generation stopped");
   };
 
   const downloadAll = () => {
@@ -239,6 +228,12 @@ export function InlinePrompts({
         <div className="font-mono text-xs uppercase tracking-widest text-muted-foreground">
           {partsCount * partDuration}s · {partsCount} parts
         </div>
+        {generating && (
+          <span className="ml-auto inline-flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-widest text-primary">
+            <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+            Generating in background — safe to navigate away
+          </span>
+        )}
       </div>
 
       {/* Audio attachment */}
@@ -258,7 +253,8 @@ export function InlinePrompts({
               <button
                 type="button"
                 onClick={() => setVoLanguage("none")}
-                className="ml-1 opacity-60 hover:opacity-100"
+                disabled={generating}
+                className="ml-1 opacity-60 hover:opacity-100 disabled:cursor-not-allowed"
                 data-testid="button-vo-remove"
                 aria-label="Remove voiceover"
               >
@@ -269,7 +265,8 @@ export function InlinePrompts({
             <button
               type="button"
               onClick={() => setVoPanelOpen((v) => !v)}
-              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border border-border text-xs font-mono uppercase tracking-widest text-muted-foreground hover:border-primary hover:text-primary transition-colors"
+              disabled={generating}
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border border-border text-xs font-mono uppercase tracking-widest text-muted-foreground hover:border-primary hover:text-primary disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               data-testid="button-vo-add"
             >
               + Add voiceover
@@ -279,7 +276,8 @@ export function InlinePrompts({
             <button
               type="button"
               onClick={() => setVoPanelOpen((v) => !v)}
-              className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground hover:text-primary"
+              disabled={generating}
+              className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground hover:text-primary disabled:opacity-50"
               data-testid="button-vo-change"
             >
               Change
@@ -357,7 +355,8 @@ export function InlinePrompts({
               <button
                 type="button"
                 onClick={() => setBgm(null)}
-                className="ml-1 opacity-60 hover:opacity-100"
+                disabled={generating}
+                className="ml-1 opacity-60 hover:opacity-100 disabled:cursor-not-allowed"
                 data-testid="button-bgm-remove"
                 aria-label="Remove BGM"
               >
@@ -368,7 +367,8 @@ export function InlinePrompts({
             <button
               type="button"
               onClick={() => setBgm(initialBgm)}
-              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border border-border text-xs font-mono uppercase tracking-widest text-muted-foreground hover:border-primary hover:text-primary transition-colors"
+              disabled={generating}
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border border-border text-xs font-mono uppercase tracking-widest text-muted-foreground hover:border-primary hover:text-primary disabled:opacity-50 transition-colors"
               data-testid="button-bgm-add"
             >
               + Add BGM
@@ -377,7 +377,8 @@ export function InlinePrompts({
           <button
             type="button"
             onClick={() => setBgmPanelOpen((v) => !v)}
-            className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground hover:text-primary"
+            disabled={generating}
+            className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground hover:text-primary disabled:opacity-50"
             data-testid="button-bgm-change"
           >
             Change BGM
@@ -412,26 +413,39 @@ export function InlinePrompts({
         )}
       </div>
 
-      {/* Generate button */}
+      {/* Generate / Stop button */}
       <div className="px-6 py-5 border-b border-border flex flex-wrap items-center gap-3">
-        <button
-          type="button"
-          onClick={startGeneration}
-          disabled={generating}
-          className="inline-flex items-center gap-2 px-5 py-3 rounded-md bg-primary text-black font-mono text-xs uppercase tracking-widest hover:bg-[#D4EB3A] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          data-testid="button-generate-prompts-inline"
-        >
-          {generating ? (
-            <>
+        {!generating && (
+          <button
+            type="button"
+            onClick={startGeneration}
+            className="inline-flex items-center gap-2 px-5 py-3 rounded-md bg-primary text-black font-mono text-xs uppercase tracking-widest hover:bg-[#D4EB3A] transition-colors"
+            data-testid="button-generate-prompts-inline"
+          >
+            <Sparkles className="w-4 h-4" />{" "}
+            {parts.length > 0 ? "Regenerate" : `Generate ${partsCount} prompt${partsCount === 1 ? "" : "s"}`}
+          </button>
+        )}
+        {generating && (
+          <>
+            <button
+              type="button"
+              disabled
+              className="inline-flex items-center gap-2 px-5 py-3 rounded-md bg-primary/40 text-black font-mono text-xs uppercase tracking-widest"
+              data-testid="button-generate-prompts-inline"
+            >
               <Loader2 className="w-4 h-4 animate-spin" /> Generating…
-            </>
-          ) : (
-            <>
-              <Sparkles className="w-4 h-4" /> Generate {partsCount} prompt
-              {partsCount === 1 ? "" : "s"}
-            </>
-          )}
-        </button>
+            </button>
+            <button
+              type="button"
+              onClick={cancelGeneration}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-md border border-border font-mono text-xs uppercase tracking-widest hover:border-red-500 hover:text-red-400 transition-colors"
+              data-testid="button-stop-generation"
+            >
+              <StopCircle className="w-4 h-4" /> Stop
+            </button>
+          </>
+        )}
         {parts.length > 0 && !generating && (
           <button
             type="button"
@@ -444,25 +458,25 @@ export function InlinePrompts({
         )}
       </div>
 
-      {progress && (
+      {generating && job && (
         <div className="px-6 py-4 border-b border-border">
           <div className="text-xs font-mono uppercase tracking-widest text-muted-foreground">
-            Generating part {progress.current} of {progress.total}…
+            Generating part {job.current} of {job.total}…
           </div>
           <div className="mt-2 h-1 bg-secondary/40 rounded">
             <div
               className="h-1 bg-primary rounded transition-all"
               style={{
-                width: `${(progress.current / progress.total) * 100}%`,
+                width: `${(job.current / job.total) * 100}%`,
               }}
             />
           </div>
         </div>
       )}
 
-      {error && (
+      {job?.status === "error" && job.error && (
         <div className="px-6 py-4 border-b border-border">
-          <ErrorCard message={error} onRetry={startGeneration} />
+          <ErrorCard message={job.error} onRetry={startGeneration} />
         </div>
       )}
 
@@ -629,39 +643,46 @@ function PartCard({
                       {s.name}
                     </span>
                     {s.isSignature && (
-                      <span className="ml-2 inline-flex items-center gap-1 text-[10px] font-mono uppercase tracking-widest text-black bg-primary px-1.5 py-0.5 rounded">
-                        <Star className="w-3 h-3" /> Signature
+                      <span className="inline-flex items-center gap-1 text-[10px] font-mono uppercase tracking-widest text-black bg-primary px-1.5 py-0.5 rounded">
+                        <Star className="w-2.5 h-2.5" />
                       </span>
                     )}
                   </div>
-                  <Play
-                    className={`w-4 h-4 text-muted-foreground transition-transform ${
-                      expandedShot === s.shotNumber ? "rotate-90" : ""
-                    }`}
-                  />
+                  <span className="text-[10px] font-mono text-muted-foreground">
+                    {expandedShot === s.shotNumber ? "−" : "+"}
+                  </span>
                 </button>
                 {expandedShot === s.shotNumber && (
-                  <div className="px-3 pb-3 pt-0 space-y-2 text-xs">
-                    <p>{s.description}</p>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-[11px]">
-                      <Field label="Camera" value={s.cameraWork} />
-                      <Field label="Speed" value={s.speed} />
-                      <Field label="Transition" value={s.transition} />
+                  <div className="border-t border-border p-3 text-xs space-y-2">
+                    <div>
+                      <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                        Description ·{" "}
+                      </span>
+                      {s.description}
                     </div>
                     <div>
-                      <div className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-1">
-                        Effects
-                      </div>
-                      <div className="flex flex-wrap gap-1">
-                        {s.effects.map((e, i) => (
-                          <span
-                            key={i}
-                            className="text-[10px] font-mono px-1.5 py-0.5 rounded border border-border"
-                          >
-                            {e}
-                          </span>
-                        ))}
-                      </div>
+                      <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                        Effects ·{" "}
+                      </span>
+                      {s.effects.join(", ")}
+                    </div>
+                    <div>
+                      <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                        Camera ·{" "}
+                      </span>
+                      {s.cameraWork}
+                    </div>
+                    <div>
+                      <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                        Speed ·{" "}
+                      </span>
+                      {s.speed}
+                    </div>
+                    <div>
+                      <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                        Exit ·{" "}
+                      </span>
+                      {s.transition}
                     </div>
                   </div>
                 )}
@@ -670,26 +691,27 @@ function PartCard({
           </ul>
         </div>
 
-        <div className="border-t border-border pt-4">
-          <div className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-2 flex items-center gap-1">
-            <Check className="w-3 h-3" /> Last frame (continuation)
+        {part.energyArc && (
+          <div>
+            <div className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-2">
+              Energy Arc
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+              {(["act1", "act2", "act3"] as const).map((k, i) => (
+                <div
+                  key={k}
+                  className="border border-border rounded-md p-3 bg-card text-xs"
+                >
+                  <div className="text-[10px] font-mono uppercase tracking-widest text-primary">
+                    Act {i + 1}
+                  </div>
+                  <p className="mt-1">{part.energyArc[k]}</p>
+                </div>
+              ))}
+            </div>
           </div>
-          <p className="text-xs text-muted-foreground italic">
-            {part.lastFrameDescription}
-          </p>
-        </div>
+        )}
       </div>
-    </div>
-  );
-}
-
-function Field({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="border border-border rounded-md p-2">
-      <div className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground">
-        {label}
-      </div>
-      <div className="text-xs">{value}</div>
     </div>
   );
 }

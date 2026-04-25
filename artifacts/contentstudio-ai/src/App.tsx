@@ -4,6 +4,7 @@ import { setBaseUrl } from "@workspace/api-client-react";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Layout } from "@/components/layout";
+import { GenerationProvider } from "@/lib/generation-context";
 import Dashboard from "@/pages/dashboard";
 import StoryBuilder from "@/pages/story";
 import PromptsGenerator from "@/pages/prompts";
@@ -46,16 +47,18 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <WouterRouter base={basePrefix}>
-          <Router />
-        </WouterRouter>
-        <Toaster
-          theme="dark"
-          toastOptions={{
-            className:
-              "border-border bg-card text-foreground font-mono text-xs",
-          }}
-        />
+        <GenerationProvider>
+          <WouterRouter base={basePrefix}>
+            <Router />
+          </WouterRouter>
+          <Toaster
+            theme="dark"
+            toastOptions={{
+              className:
+                "border-border bg-card text-foreground font-mono text-xs",
+            }}
+          />
+        </GenerationProvider>
       </TooltipProvider>
     </QueryClientProvider>
   );
