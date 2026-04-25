@@ -39,8 +39,16 @@ export interface StoryResponse {
 export interface StoryRequest {
   brief: string;
   genre: string;
-  /** Total target duration in seconds */
+  /** Total target duration in seconds (kept for backward compatibility, equivalent to totalDurationSeconds) */
   duration: number;
+  /** Total target duration in seconds */
+  totalDurationSeconds?: number;
+  /** Number of 15-second video parts (Math.ceil(totalDurationSeconds/15)) */
+  partsCount?: number;
+  /** Visual style name, e.g. "Live Action Cinematic" */
+  style?: string;
+  /** "none" | "english" | "hindi" | "hinglish" */
+  voiceoverLanguage?: string;
 }
 
 export interface ContinueStoryRequest {
@@ -83,6 +91,12 @@ export interface VideoEnergyArc {
   act3: string;
 }
 
+export interface VideoAudioSummary {
+  voiceoverIncluded: boolean;
+  bgmIncluded: boolean;
+  keySyncPoints: string[];
+}
+
 export interface VideoPromptsResponse {
   shots: VideoShot[];
   effectsInventory: VideoEffectInventoryItem[];
@@ -90,6 +104,9 @@ export interface VideoPromptsResponse {
   energyArc: VideoEnergyArc;
   lastFrameDescription: string;
   copyablePrompt: string;
+  /** VO script written by the model when voiceoverLanguage was set in the request */
+  autoVoiceoverScript?: string | null;
+  audioSummary?: VideoAudioSummary;
 }
 
 export interface VideoPromptsRequest {
@@ -101,6 +118,14 @@ export interface VideoPromptsRequest {
   totalParts: number;
   /** lastFrameDescription from the previous part for continuation */
   previousLastFrame?: string;
+  /** "english" | "hindi" | "hinglish" — when set, Claude auto-writes a part-specific VO */
+  voiceoverLanguage?: string | null;
+  voiceoverTone?: string | null;
+  /** Optional pre-written script for this part. If absent and voiceoverLanguage is set, the model writes one. */
+  voiceoverScript?: string | null;
+  bgmStyle?: string | null;
+  bgmTempo?: string | null;
+  bgmInstruments?: string[];
 }
 
 export interface MusicPartDirection {

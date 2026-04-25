@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { VideoAudioSummary } from "./videoAudioSummary";
 import type { VideoDensityBlock } from "./videoDensityBlock";
 import type { VideoEffectInventoryItem } from "./videoEffectInventoryItem";
 import type { VideoEnergyArc } from "./videoEnergyArc";
@@ -17,4 +18,7 @@ export interface VideoPromptsResponse {
   energyArc: VideoEnergyArc;
   lastFrameDescription: string;
   copyablePrompt: string;
+  /** VO script written by the model when voiceoverLanguage was set in the request */
+  autoVoiceoverScript?: string | null;
+  audioSummary?: VideoAudioSummary;
 }

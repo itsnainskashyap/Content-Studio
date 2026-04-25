@@ -9,6 +9,14 @@
 export interface StoryRequest {
   brief: string;
   genre: string;
-  /** Total target duration in seconds */
+  /** Total target duration in seconds (kept for backward compatibility, equivalent to totalDurationSeconds) */
   duration: number;
+  /** Total target duration in seconds */
+  totalDurationSeconds?: number;
+  /** Number of 15-second video parts (Math.ceil(totalDurationSeconds/15)) */
+  partsCount?: number;
+  /** Visual style name, e.g. "Live Action Cinematic" */
+  style?: string;
+  /** "none" | "english" | "hindi" | "hinglish" */
+  voiceoverLanguage?: string;
 }

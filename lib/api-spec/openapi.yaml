@@ -259,7 +259,19 @@ components:
           type: string
         duration:
           type: number
+          description: Total target duration in seconds (kept for backward compatibility, equivalent to totalDurationSeconds)
+        totalDurationSeconds:
+          type: number
           description: Total target duration in seconds
+        partsCount:
+          type: integer
+          description: Number of 15-second video parts (Math.ceil(totalDurationSeconds/15))
+        style:
+          type: string
+          description: Visual style name, e.g. "Live Action Cinematic"
+        voiceoverLanguage:
+          type: string
+          description: '"none" | "english" | "hindi" | "hinglish"'
       required:
         - brief
         - genre
@@ -362,6 +374,21 @@ components:
         - act1
         - act2
         - act3
+    VideoAudioSummary:
+      type: object
+      properties:
+        voiceoverIncluded:
+          type: boolean
+        bgmIncluded:
+          type: boolean
+        keySyncPoints:
+          type: array
+          items:
+            type: string
+      required:
+        - voiceoverIncluded
+        - bgmIncluded
+        - keySyncPoints
     VideoPromptsResponse:
       type: object
       properties:
@@ -383,6 +410,12 @@ components:
           type: string
         copyablePrompt:
           type: string
+        autoVoiceoverScript:
+          type: string
+          nullable: true
+          description: VO script written by the model when voiceoverLanguage was set in the request
+        audioSummary:
+          $ref: "#/components/schemas/VideoAudioSummary"
       required:
         - shots
         - effectsInventory
@@ -407,6 +440,27 @@ components:
         previousLastFrame:
           type: string
           description: lastFrameDescription from the previous part for continuation
+        voiceoverLanguage:
+          type: string
+          nullable: true
+          description: '"english" | "hindi" | "hinglish" — when set, Claude auto-writes a part-specific VO'
+        voiceoverTone:
+          type: string
+          nullable: true
+        voiceoverScript:
+          type: string
+          nullable: true
+          description: Optional pre-written script for this part. If absent and voiceoverLanguage is set, the model writes one.
+        bgmStyle:
+          type: string
+          nullable: true
+        bgmTempo:
+          type: string
+          nullable: true
+        bgmInstruments:
+          type: array
+          items:
+            type: string
       required:
         - story
         - style

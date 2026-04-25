@@ -67,14 +67,27 @@ router.post("/generate-story", async (req: Request, res: Response) => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
-  const { brief, genre, duration } = parsed.data;
+  const {
+    brief,
+    genre,
+    duration,
+    totalDurationSeconds,
+    partsCount,
+    style,
+    voiceoverLanguage,
+  } = parsed.data;
+  const totalDur = totalDurationSeconds ?? duration;
+  const parts = partsCount ?? Math.max(1, Math.ceil(totalDur / 15));
   const userPrompt = `Create a structured cinematic story from the following brief.
 
 BRIEF:
 ${brief}
 
 GENRE: ${genre}
-TOTAL DURATION: ${duration} seconds
+TOTAL DURATION: ${totalDur} seconds
+PARTS COUNT: ${parts} (the video will be ${parts} parts of ~15 seconds each — structure your acts so they map cleanly to that)
+STYLE: ${style ?? "(creator has not picked a style yet — keep it style-agnostic)"}
+VOICEOVER LANGUAGE: ${voiceoverLanguage ?? "none"}
 
 Output the structured story as JSON.`;
 
@@ -129,8 +142,48 @@ router.post(
       res.status(400).json({ error: parsed.error.message });
       return;
     }
-    const { story, style, duration, part, totalParts, previousLastFrame } =
-      parsed.data;
+    const {
+      story,
+      style,
+      duration,
+      part,
+      totalParts,
+      previousLastFrame,
+      voiceoverLanguage,
+      voiceoverTone,
+      voiceoverScript,
+      bgmStyle,
+      bgmTempo,
+      bgmInstruments,
+    } = parsed.data;
+
+    const audioBlock: string[] = [];
+    if (voiceoverLanguage && voiceoverLanguage !== "none") {
+      audioBlock.push(
+        `- Voiceover language: ${voiceoverLanguage}` +
+          (voiceoverTone ? ` (tone: ${voiceoverTone})` : "") +
+          (voiceoverScript
+            ? `\n  Use this pre-written script verbatim for [VOICEOVER: ...]: ${voiceoverScript}`
+            : `\n  No script provided — AUTO-WRITE one for this part following the audio rules.`),
+      );
+    } else {
+      audioBlock.push(
+        `- Voiceover: NOT included for this video (omit the [VOICEOVER: ...] block and autoVoiceoverScript should be null).`,
+      );
+    }
+    if (bgmStyle) {
+      audioBlock.push(
+        `- Background music: ${bgmStyle}` +
+          (bgmTempo ? ` (${bgmTempo})` : "") +
+          (bgmInstruments && bgmInstruments.length
+            ? ` — instruments: ${bgmInstruments.join(", ")}`
+            : ""),
+      );
+    } else {
+      audioBlock.push(
+        `- Background music: NOT included (omit the [BACKGROUND MUSIC: ...] block).`,
+      );
+    }
 
     const userPrompt = `Generate Seedance 2.0 video prompts for ONE part of a multi-part video.
 
@@ -142,6 +195,9 @@ THIS PART:
 - Duration of this part: ${duration} seconds (build shots whose timestamps sum to roughly this duration)
 - Style: ${style}
 ${previousLastFrame ? `- Previous part ended on this frame (the FIRST shot of this part must continue from it):\n  ${previousLastFrame}` : "- This is the FIRST part — no previous frame to continue from."}
+
+AUDIO FOR THIS PART:
+${audioBlock.join("\n")}
 
 Output the JSON described in the system prompt.`;
 

@@ -1,25 +1,73 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
-import { Loader2, Save, Sparkles, ArrowRight, BookOpen } from "lucide-react";
+import {
+  Loader2,
+  Save,
+  Sparkles,
+  ArrowRight,
+  BookOpen,
+  Volume2,
+} from "lucide-react";
 import { toast } from "sonner";
 import {
   useGenerateStory,
   useContinueStory,
 } from "@workspace/api-client-react";
-import { storage, createEmptyProject, GENRES, type Project } from "@/lib/storage";
+import {
+  storage,
+  createEmptyProject,
+  GENRES,
+  STYLES,
+  type Project,
+  type VoiceoverLanguage,
+} from "@/lib/storage";
 import { useApiCall, mutationCaller } from "@/lib/api-call";
 import { ErrorCard } from "@/components/error-card";
 import { CopyButton } from "@/components/copy-button";
+import { InlinePrompts } from "@/components/inline-prompts";
 
-const DURATIONS = [5, 10, 15, 20, 30, 60];
+interface DurationPreset {
+  key: string;
+  label: string;
+  seconds: number | null; // null = custom
+}
+const DURATIONS: DurationPreset[] = [
+  { key: "30s", label: "30s", seconds: 30 },
+  { key: "1min", label: "1 min", seconds: 60 },
+  { key: "2min", label: "2 min", seconds: 120 },
+  { key: "3min", label: "3 min", seconds: 180 },
+  { key: "5min", label: "5 min", seconds: 300 },
+  { key: "custom", label: "Custom", seconds: null },
+];
+
+const VO_OPTIONS: Array<{ key: VoiceoverLanguage; label: string }> = [
+  { key: "none", label: "No VO" },
+  { key: "hindi", label: "हिंदी" },
+  { key: "english", label: "English" },
+  { key: "hinglish", label: "Hinglish" },
+];
+
+interface PrefillTemplate {
+  brief?: string;
+  genre?: string;
+  totalDurationSeconds?: number;
+  style?: string;
+  voiceoverLanguage?: VoiceoverLanguage;
+  autoGenerate?: boolean;
+}
 
 export default function StoryBuilder() {
   const [, navigate] = useLocation();
   const [brief, setBrief] = useState("");
   const [genre, setGenre] = useState("Drama");
-  const [duration, setDuration] = useState(30);
+  const [durationKey, setDurationKey] = useState<string>("30s");
+  const [customMin, setCustomMin] = useState(0);
+  const [customSec, setCustomSec] = useState(45);
+  const [styleName, setStyleName] = useState<string | null>(null);
+  const [voLanguage, setVoLanguage] = useState<VoiceoverLanguage>("none");
   const [project, setProject] = useState<Project | null>(null);
   const [direction, setDirection] = useState("");
+  const [showPrompts, setShowPrompts] = useState(false);
 
   const generateStoryMut = useGenerateStory();
   const continueStoryMut = useContinueStory();
@@ -28,51 +76,160 @@ export default function StoryBuilder() {
     mutationCaller(continueStoryMut.mutateAsync),
   );
 
+  // Compute total duration in seconds
+  const totalDurationSeconds = useMemo(() => {
+    const preset = DURATIONS.find((d) => d.key === durationKey);
+    if (!preset) return 30;
+    if (preset.seconds !== null) return preset.seconds;
+    const sec = Math.max(15, customMin * 60 + customSec);
+    return sec;
+  }, [durationKey, customMin, customSec]);
+
+  const partsCount = useMemo(
+    () => Math.max(1, Math.ceil(totalDurationSeconds / 15)),
+    [totalDurationSeconds],
+  );
+
   useEffect(() => {
+    // Read template prefill from sessionStorage if dashboard sent us one
+    let prefill: PrefillTemplate | null = null;
+    try {
+      const raw = sessionStorage.getItem("cs_template");
+      if (raw) {
+        prefill = JSON.parse(raw) as PrefillTemplate;
+        sessionStorage.removeItem("cs_template");
+      }
+    } catch {
+      prefill = null;
+    }
+
     const current = storage.getCurrentProject();
-    if (current) {
+    if (current && !prefill) {
       setProject(current);
       setBrief(current.brief);
       setGenre(current.genre);
-      setDuration(current.totalDuration);
+      setStyleName(current.style ?? null);
+      setVoLanguage((current.voiceoverLanguage ?? "none") as VoiceoverLanguage);
+      // Map totalDurationSeconds back into UI
+      const sec = current.totalDurationSeconds ?? current.totalDuration ?? 30;
+      const preset = DURATIONS.find((d) => d.seconds === sec);
+      if (preset) {
+        setDurationKey(preset.key);
+      } else {
+        setDurationKey("custom");
+        setCustomMin(Math.floor(sec / 60));
+        setCustomSec(sec % 60);
+      }
       if (current.story) {
         storyCall.setData(current.story);
       }
+      if (current.parts.length > 0) {
+        setShowPrompts(true);
+      }
+    } else if (prefill) {
+      if (prefill.brief !== undefined) setBrief(prefill.brief);
+      if (prefill.genre) setGenre(prefill.genre);
+      if (prefill.style !== undefined) setStyleName(prefill.style);
+      if (prefill.voiceoverLanguage)
+        setVoLanguage(prefill.voiceoverLanguage);
+      if (prefill.totalDurationSeconds) {
+        const preset = DURATIONS.find(
+          (d) => d.seconds === prefill!.totalDurationSeconds,
+        );
+        if (preset) {
+          setDurationKey(preset.key);
+        } else {
+          setDurationKey("custom");
+          setCustomMin(Math.floor(prefill.totalDurationSeconds / 60));
+          setCustomSec(prefill.totalDurationSeconds % 60);
+        }
+      }
+      // Clear current project so a fresh project is created
+      storage.setCurrentProjectId(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const canGenerate =
+    brief.trim().length > 0 && styleName !== null && totalDurationSeconds > 0;
 
   const handleGenerate = async () => {
     if (!brief.trim()) {
       toast.error("Add a brief first");
       return;
     }
-    const result = await storyCall.run({ brief, genre, duration });
+    if (!styleName) {
+      toast.error("Pick a visual style");
+      return;
+    }
+    setShowPrompts(false);
+    const result = await storyCall.run({
+      brief,
+      genre,
+      duration: totalDurationSeconds,
+      totalDurationSeconds,
+      partsCount,
+      style: styleName,
+      voiceoverLanguage: voLanguage,
+    });
     if (result) {
       toast.success("Story generated");
     }
   };
 
-  const handleSave = () => {
-    if (!storyCall.data) return;
-    const story = storyCall.data;
-    let p = project;
-    if (!p) {
-      p = createEmptyProject({
+  const persistProjectFromStory = (
+    p: Project | null,
+    storyOverride?: typeof storyCall.data,
+  ): Project => {
+    const story = storyOverride ?? storyCall.data;
+    if (!story) throw new Error("No story to save");
+    let next = p;
+    if (!next) {
+      next = createEmptyProject({
         title: story.title,
         brief,
         genre,
-        totalDuration: duration,
+        totalDuration: totalDurationSeconds,
+        style: styleName,
+        voiceoverLanguage: voLanguage,
       });
     } else {
-      p = { ...p, title: story.title, brief, genre, totalDuration: duration };
+      next = {
+        ...next,
+        title: story.title,
+        brief,
+        genre,
+        totalDuration: totalDurationSeconds,
+        totalDurationSeconds,
+        partsCount,
+        style: styleName,
+        voiceoverLanguage: voLanguage,
+      };
     }
-    p.story = story;
-    const saved = storage.saveProject(p);
+    next.story = story;
+    const saved = storage.saveProject(next);
     storage.setCurrentProjectId(saved.id);
     setProject(saved);
     window.dispatchEvent(new Event("cs:projects-changed"));
+    return saved;
+  };
+
+  const handleSave = () => {
+    if (!storyCall.data) return;
+    persistProjectFromStory(project);
     toast.success("Project saved");
+  };
+
+  const handleStartPrompts = () => {
+    if (!storyCall.data) return;
+    persistProjectFromStory(project);
+    setShowPrompts(true);
+    requestAnimationFrame(() => {
+      const el = document.querySelector(
+        '[data-testid="inline-prompts-section"]',
+      );
+      el?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
   };
 
   const handleContinue = async () => {
@@ -98,14 +255,14 @@ export default function StoryBuilder() {
     <div className="px-6 py-10 md:px-12 md:py-14 max-w-6xl mx-auto">
       <div className="mb-10">
         <div className="text-xs font-mono uppercase tracking-widest text-muted-foreground">
-          Step {story ? "2" : "1"} of 2
+          Step {showPrompts ? "3" : story ? "2" : "1"} of 3
         </div>
         <h1 className="font-display text-4xl md:text-5xl tracking-tight mt-1">
           Story Builder
         </h1>
       </div>
 
-      {/* Step 1 — brief input (always visible, collapsible vibe) */}
+      {/* Step 1 — brief input + selectors */}
       <section className="border border-border rounded-md p-6 bg-card">
         <h2 className="font-mono text-xs uppercase tracking-widest text-muted-foreground">
           Brief
@@ -142,33 +299,163 @@ export default function StoryBuilder() {
           </div>
         </div>
 
-        <div className="mt-5">
+        {/* Total Duration — 6 large cards */}
+        <div className="mt-6">
           <h3 className="font-mono text-xs uppercase tracking-widest text-muted-foreground">
             Total Duration
           </h3>
+          <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+            {DURATIONS.map((d) => {
+              const active = durationKey === d.key;
+              return (
+                <button
+                  key={d.key}
+                  type="button"
+                  onClick={() => setDurationKey(d.key)}
+                  className={`text-left p-3 rounded-md border transition-colors ${
+                    active
+                      ? "border-primary bg-primary/10 text-foreground"
+                      : "border-border text-muted-foreground hover:border-foreground/30 hover:text-foreground"
+                  }`}
+                  data-testid={`duration-card-${d.key}`}
+                >
+                  <div className="font-display text-2xl tracking-tight">
+                    {d.label}
+                  </div>
+                  <div
+                    className={`text-[10px] font-mono uppercase tracking-widest mt-1 ${
+                      active ? "text-primary" : "text-muted-foreground"
+                    }`}
+                  >
+                    {d.seconds === null
+                      ? "min + sec"
+                      : `${Math.max(1, Math.ceil(d.seconds / 15))} parts`}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+          {durationKey === "custom" && (
+            <div className="mt-3 flex items-center gap-3">
+              <label className="flex items-center gap-2 text-xs font-mono uppercase tracking-widest text-muted-foreground">
+                Min
+                <input
+                  type="number"
+                  min={0}
+                  max={60}
+                  value={customMin}
+                  onChange={(e) =>
+                    setCustomMin(Math.max(0, Number(e.target.value || 0)))
+                  }
+                  className="w-16 bg-background border border-border rounded-md p-2 text-sm focus:outline-none focus:border-primary"
+                  data-testid="input-custom-min"
+                />
+              </label>
+              <label className="flex items-center gap-2 text-xs font-mono uppercase tracking-widest text-muted-foreground">
+                Sec
+                <input
+                  type="number"
+                  min={0}
+                  max={59}
+                  value={customSec}
+                  onChange={(e) =>
+                    setCustomSec(
+                      Math.max(0, Math.min(59, Number(e.target.value || 0))),
+                    )
+                  }
+                  className="w-16 bg-background border border-border rounded-md p-2 text-sm focus:outline-none focus:border-primary"
+                  data-testid="input-custom-sec"
+                />
+              </label>
+              <span className="text-xs font-mono text-muted-foreground">
+                = {totalDurationSeconds}s · {partsCount} parts
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* Visual Style — 4 col grid */}
+        <div className="mt-6">
+          <h3 className="font-mono text-xs uppercase tracking-widest text-muted-foreground">
+            Visual Style
+          </h3>
+          <div className="mt-3 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+            {STYLES.map((s) => {
+              const active = styleName === s.name;
+              return (
+                <button
+                  key={s.key}
+                  type="button"
+                  onClick={() => setStyleName(s.name)}
+                  className={`text-left p-3 rounded-md border-t-4 border-l border-r border-b transition-colors ${
+                    active
+                      ? "border-l-primary border-r-primary border-b-primary bg-primary/10"
+                      : "border-l-border border-r-border border-b-border hover:border-l-foreground/30 hover:border-r-foreground/30 hover:border-b-foreground/30"
+                  }`}
+                  style={{ borderTopColor: s.accent }}
+                  data-testid={`style-card-${s.key}`}
+                >
+                  <div className="font-display text-base tracking-tight">
+                    {s.name}
+                  </div>
+                  <div className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mt-1">
+                    {s.description}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* VO language */}
+        <div className="mt-6">
+          <h3 className="font-mono text-xs uppercase tracking-widest text-muted-foreground flex items-center gap-2">
+            <Volume2 className="w-3 h-3" /> Voiceover Language
+          </h3>
           <div className="mt-2 flex flex-wrap gap-2">
-            {DURATIONS.map((d) => (
+            {VO_OPTIONS.map((o) => (
               <button
-                key={d}
+                key={o.key}
                 type="button"
-                onClick={() => setDuration(d)}
+                onClick={() => setVoLanguage(o.key)}
                 className={`px-3 py-1.5 rounded-md text-xs font-mono uppercase tracking-widest border transition-colors ${
-                  duration === d
+                  voLanguage === o.key
                     ? "bg-primary text-black border-primary"
                     : "border-border text-muted-foreground hover:text-foreground hover:border-foreground/30"
-                }`}
-                data-testid={`pill-duration-${d}`}
+                } ${o.key === "hindi" ? "font-devanagari" : ""}`}
+                style={
+                  o.key === "hindi"
+                    ? {
+                        fontFamily:
+                          "var(--app-font-devanagari, 'Noto Sans Devanagari', sans-serif)",
+                      }
+                    : undefined
+                }
+                data-testid={`vo-option-${o.key}`}
               >
-                {d}s
+                {o.label}
               </button>
             ))}
           </div>
         </div>
 
+        {/* Summary line */}
+        <div
+          className="mt-6 px-3 py-2 rounded-md border border-border bg-background text-xs font-mono text-muted-foreground"
+          data-testid="generate-summary"
+        >
+          {totalDurationSeconds}s ·{" "}
+          <span className="text-foreground">{styleName ?? "no style"}</span> ·{" "}
+          <span className="text-foreground">
+            {voLanguage === "none" ? "no voiceover" : voLanguage}
+          </span>{" "}
+          · {partsCount} part{partsCount === 1 ? "" : "s"}
+        </div>
+
         <button
           type="button"
           onClick={handleGenerate}
-          disabled={storyCall.loading}
+          disabled={storyCall.loading || !canGenerate}
           className="mt-6 w-full inline-flex items-center justify-center gap-2 px-5 py-3 rounded-md bg-primary text-black font-mono text-xs uppercase tracking-widest hover:bg-[#D4EB3A] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           data-testid="button-generate-story"
         >
@@ -176,6 +463,10 @@ export default function StoryBuilder() {
             <>
               <Loader2 className="w-4 h-4 animate-spin" /> Writing your story…
             </>
+          ) : !brief.trim() ? (
+            <>Add a brief</>
+          ) : !styleName ? (
+            <>Pick a style</>
           ) : (
             <>
               <Sparkles className="w-4 h-4" /> Generate story
@@ -324,7 +615,36 @@ export default function StoryBuilder() {
             </div>
           </div>
 
-          <div className="mt-8 flex flex-wrap gap-3">
+          {/* Confirmation strip + actions */}
+          <div
+            className="mt-8 flex flex-wrap items-center gap-3 px-4 py-3 rounded-md border border-border bg-card"
+            data-testid="post-story-strip"
+          >
+            <div className="text-[10px] font-mono uppercase tracking-widest text-primary">
+              Story ready
+            </div>
+            <span className="text-muted-foreground/40">·</span>
+            <div className="font-mono text-xs uppercase tracking-widest text-foreground">
+              {styleName ?? "no style"}
+            </div>
+            <span className="text-muted-foreground/40">·</span>
+            <div className="font-mono text-xs uppercase tracking-widest text-muted-foreground">
+              {totalDurationSeconds}s · {partsCount} parts
+            </div>
+            {voLanguage !== "none" && (
+              <>
+                <span className="text-muted-foreground/40">·</span>
+                <div
+                  className="font-mono text-xs uppercase tracking-widest text-emerald-300"
+                  data-testid="post-story-vo"
+                >
+                  VO: {voLanguage}
+                </div>
+              </>
+            )}
+          </div>
+
+          <div className="mt-4 flex flex-wrap gap-3">
             <button
               type="button"
               onClick={handleGenerate}
@@ -344,10 +664,7 @@ export default function StoryBuilder() {
             </button>
             <button
               type="button"
-              onClick={() => {
-                handleSave();
-                navigate("/generate");
-              }}
+              onClick={handleStartPrompts}
               className="inline-flex items-center gap-2 px-5 py-3 rounded-md bg-primary text-black font-mono text-xs uppercase tracking-widest hover:bg-[#D4EB3A] transition-colors"
               data-testid="button-to-prompts"
             >
@@ -392,6 +709,17 @@ export default function StoryBuilder() {
             )}
           </div>
         </section>
+      )}
+
+      {/* Inline Prompts panel */}
+      {showPrompts && project?.story && styleName && (
+        <InlinePrompts
+          project={project}
+          style={styleName}
+          partsCount={partsCount}
+          initialVoiceoverLanguage={voLanguage}
+          onProjectUpdated={(p) => setProject(p)}
+        />
       )}
     </div>
   );

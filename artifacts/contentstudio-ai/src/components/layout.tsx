@@ -96,6 +96,7 @@ const navItems = [
 export function Layout({ children }: LayoutProps) {
   const [location] = useLocation();
   const [recents, setRecents] = useState<Project[]>([]);
+  const [currentProject, setCurrentProject] = useState<Project | null>(null);
 
   useEffect(() => {
     const refresh = () => {
@@ -105,6 +106,7 @@ export function Layout({ children }: LayoutProps) {
           .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
           .slice(0, 5),
       );
+      setCurrentProject(storage.getCurrentProject());
     };
     refresh();
     window.addEventListener("storage", refresh);
@@ -117,6 +119,15 @@ export function Layout({ children }: LayoutProps) {
       );
     };
   }, [location]);
+
+  const subNav = currentProject
+    ? [
+        { href: "/story", label: "Story", icon: BookOpen },
+        { href: "/generate", label: "Video Prompts", icon: Video },
+        { href: "/music", label: "Music", icon: Music },
+        { href: "/voiceover", label: "Voiceover", icon: Mic },
+      ]
+    : [];
 
   const sidebar = (
     <>
@@ -166,6 +177,49 @@ export function Layout({ children }: LayoutProps) {
             );
           })}
         </ul>
+
+        {currentProject && (
+          <>
+            <div
+              className="mt-6 px-6 text-[11px] uppercase tracking-widest text-muted-foreground/70 font-mono"
+              data-testid="sidebar-current-project-label"
+            >
+              Current Project
+            </div>
+            <div
+              className="px-6 mt-1 text-xs text-primary font-sans truncate"
+              data-testid="sidebar-current-project-title"
+            >
+              {currentProject.title}
+            </div>
+            <ul className="mt-2 space-y-1 px-3" data-testid="sidebar-subnav">
+              {subNav.map((item) => {
+                const isActive = location === item.href;
+                const Icon = item.icon;
+                return (
+                  <li key={item.href}>
+                    <Link
+                      href={item.href}
+                      className={cn(
+                        "relative flex items-center gap-3 pl-7 pr-3 py-1.5 text-xs transition-colors rounded-md",
+                        isActive
+                          ? "bg-secondary/70 text-primary"
+                          : "text-muted-foreground hover:text-foreground hover:bg-secondary/40",
+                      )}
+                      data-testid={`subnav-${item.label.toLowerCase().replace(/\s+/g, "-")}`}
+                    >
+                      <span className="absolute left-3 text-muted-foreground/50">
+                        ├
+                      </span>
+                      <Icon className="w-3.5 h-3.5" />
+                      {item.label}
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </>
+        )}
 
         <div className="mt-6 px-6 text-[11px] uppercase tracking-widest text-muted-foreground/70 font-mono flex items-center justify-between">
           <span>Recent Projects</span>

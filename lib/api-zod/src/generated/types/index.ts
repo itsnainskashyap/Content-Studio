@@ -16,6 +16,7 @@ export * from "./storyAct";
 export * from "./storyCharacter";
 export * from "./storyRequest";
 export * from "./storyResponse";
+export * from "./videoAudioSummary";
 export * from "./videoDensityBlock";
 export * from "./videoEffectInventoryItem";
 export * from "./videoEnergyArc";

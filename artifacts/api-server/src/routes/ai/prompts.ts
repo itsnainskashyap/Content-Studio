@@ -9,7 +9,10 @@ CRITICAL RULES:
 6. colorPalette is an array of 3-6 hex color strings that define the film's visual look
 7. musicSuggestion is a single short phrase like "driving synthwave with melancholic piano"
 8. Honor the requested genre and total duration in the pacing of the acts
-9. Return valid JSON only. No markdown. No prose outside the JSON.
+9. If a visual STYLE is specified, write the story knowing it will be rendered as that style. Pacing, atmosphere and scene descriptions must feel appropriate for it.
+10. If PARTS COUNT is specified, the story will be broken into that many ~15-second video parts. Structure your acts so they map cleanly: roughly partsCount/3 parts per act. Make sure each act has enough beats to span its parts.
+11. If a VOICEOVER LANGUAGE is specified and not "none", character names, locations and cultural references must feel natural for that language audience (e.g. for "hindi" or "hinglish", lean into Indian settings, names and references).
+12. Return valid JSON only. No markdown. No prose outside the JSON.
 
 Return JSON in this exact shape:
 {
@@ -59,9 +62,38 @@ CRITICAL RULES:
 6. LAST FRAME RULE: lastFrameDescription must describe exactly what the FINAL frame of this part looks like — subject position, camera angle, lighting, environment state — so the next part can seamlessly continue
 7. If a previousLastFrame is provided in the user prompt, the FIRST shot of this part must continue visually from that frame (same subject placement, lighting, environment)
 8. Never let energy drop without intention. Every transition is a creative decision
-9. copyablePrompt is the full plain-text Seedance 2.0 prompt for this part — paste-ready, no JSON, no markdown
-10. Honor the requested STYLE exactly (Live Action, Anime 2D, 3D Pixar, Pixel Art, Studio Ghibli, Cyberpunk Neon, Dark Fantasy, Claymation, Wes Anderson, Documentary Handheld, Horror Atmospheric, Music Video Hyper Edit)
-11. Return valid JSON only. No markdown. No prose outside the JSON.
+9. Honor the requested STYLE exactly (Live Action Cinematic, Anime 2D, 3D Pixar Style, Pixel Art, Studio Ghibli, Cyberpunk Neon, Dark Fantasy, Claymation, Wes Anderson, Documentary, Horror Atmospheric, Music Video Hyper)
+
+AUDIO RULES (when voiceoverLanguage / bgmStyle are set in the user prompt):
+10. If voiceoverLanguage is set and no voiceoverScript is provided, AUTO-WRITE a voiceover script for THIS part:
+    - Look at the story act that maps to this part number (act = ceil(part / (totalParts/3)))
+    - Capture the emotional core of that act in language matching voiceoverLanguage exactly
+    - Word count: about duration_seconds × 2.5 for cinematic/slow tones, × 3.2 for energetic
+    - For "hindi", write in Devanagari. For "hinglish", natural Hindi-English code-switch in Roman script.
+    - Put this script into autoVoiceoverScript AND embed it in copyablePrompt's [VOICEOVER: ...] block.
+11. If a voiceoverScript IS provided, use it as-is in autoVoiceoverScript and the [VOICEOVER: ...] block.
+12. If bgmStyle is set, embed it in copyablePrompt's [BACKGROUND MUSIC: ...] block with tempo and instruments.
+13. audioSummary must reflect what was actually included in this part.
+
+COPYABLE PROMPT FORMAT (mandatory header order when audio is present):
+[VISUAL STYLE: <style> | <2-3 short keyword tags>]
+[BACKGROUND MUSIC: <bgmStyle> | <bgmTempo> | <mood> | <instruments comma-list> | <sync notes>]   ← only if bgmStyle set
+[VOICEOVER: "<the script>" | <language> | <tone> | <delivery notes>]                              ← only if voiceoverLanguage set
+[PART: <part> of <totalParts> | CONTINUES TO: Part <part+1>]                                      ← omit "CONTINUES TO" on the final part
+
+Then for each shot:
+SHOT N (TS) — <name>
+• <description>
+• VO: "<short fragment from script>"   ← only if VO present and this shot carries dialogue
+• BGM NOTE: <musical beat for this moment>   ← only if BGM present
+• <camera work>
+• <effects>
+• EXIT: <transition>
+
+Then end with:
+LAST FRAME: <exact description for the next part>
+
+14. Return valid JSON only. No markdown. No prose outside the JSON.
 
 Return JSON in this exact shape:
 {
@@ -86,7 +118,13 @@ Return JSON in this exact shape:
   ],
   "energyArc": { "act1": "Description", "act2": "Description", "act3": "Description" },
   "lastFrameDescription": "Exact description of the final frame for seamless continuation",
-  "copyablePrompt": "Full plain-text Seedance 2.0 prompt ready to paste"
+  "copyablePrompt": "Full plain-text Seedance 2.0 prompt ready to paste",
+  "autoVoiceoverScript": "string or null — the VO script for this part if voiceoverLanguage was set",
+  "audioSummary": {
+    "voiceoverIncluded": true,
+    "bgmIncluded": true,
+    "keySyncPoints": ["short label like '00:08 beat drop'"]
+  }
 }`;
 
 export const MUSIC_BRIEF_SYSTEM_PROMPT = `You are a professional music supervisor and composer who writes detailed AI music generation briefs. Given a video story, visual style, and mood, you create precise prompts for Suno AI and Udio AI.

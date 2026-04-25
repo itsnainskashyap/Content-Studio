@@ -7,6 +7,9 @@ import type {
 
 export interface ProjectPart extends VideoPromptsResponse {
   partNumber: number;
+  voiceoverLanguage?: string | null;
+  bgmStyle?: string | null;
+  bgmTempo?: string | null;
 }
 
 export interface ProjectVoiceoverPart extends VoiceoverResponse {
@@ -19,6 +22,8 @@ export interface ProjectVoiceover {
   parts: ProjectVoiceoverPart[];
 }
 
+export type VoiceoverLanguage = "none" | "english" | "hindi" | "hinglish";
+
 export interface Project {
   id: string;
   title: string;
@@ -26,8 +31,11 @@ export interface Project {
   genre: string;
   story: StoryResponse | null;
   style: string | null;
-  duration: number; // per-part seconds
-  totalDuration: number; // total seconds requested at story creation
+  duration: number; // per-part seconds (kept for compat with /generate page)
+  totalDuration: number; // total seconds requested at story creation (alias of totalDurationSeconds)
+  totalDurationSeconds: number; // canonical name per spec
+  partsCount: number; // Math.ceil(totalDurationSeconds / 15)
+  voiceoverLanguage: VoiceoverLanguage;
   parts: ProjectPart[];
   music: MusicBriefResponse | null;
   voiceover: ProjectVoiceover | null;
@@ -65,17 +73,23 @@ export function createEmptyProject(input: {
   brief: string;
   genre: string;
   totalDuration: number;
+  style?: string | null;
+  voiceoverLanguage?: VoiceoverLanguage;
 }): Project {
   const now = new Date().toISOString();
+  const total = input.totalDuration;
   return {
     id: newId(),
     title: input.title || "Untitled project",
     brief: input.brief,
     genre: input.genre,
     story: null,
-    style: null,
-    duration: 5,
-    totalDuration: input.totalDuration,
+    style: input.style ?? null,
+    duration: 15,
+    totalDuration: total,
+    totalDurationSeconds: total,
+    partsCount: Math.max(1, Math.ceil(total / 15)),
+    voiceoverLanguage: input.voiceoverLanguage ?? "none",
     parts: [],
     music: null,
     voiceover: null,
@@ -84,11 +98,27 @@ export function createEmptyProject(input: {
   };
 }
 
+/**
+ * Migrate legacy projects in localStorage to ensure new required fields exist.
+ * Called from getProjects() so reads always return well-shaped projects.
+ */
+function migrateProject(p: Project): Project {
+  const total = p.totalDurationSeconds ?? p.totalDuration ?? 30;
+  return {
+    ...p,
+    totalDurationSeconds: total,
+    totalDuration: p.totalDuration ?? total,
+    partsCount: p.partsCount ?? Math.max(1, Math.ceil(total / 15)),
+    voiceoverLanguage: (p.voiceoverLanguage ?? "none") as VoiceoverLanguage,
+  };
+}
+
 export const storage = {
   getProjects(): Project[] {
     try {
       const data = localStorage.getItem(STORAGE_KEYS.PROJECTS);
-      return data ? (JSON.parse(data) as Project[]) : [];
+      const raw = data ? (JSON.parse(data) as Project[]) : [];
+      return raw.map(migrateProject);
     } catch {
       return [];
     }
@@ -186,88 +216,94 @@ export const STYLES: Array<{
   {
     key: "live-action",
     name: "Live Action Cinematic",
-    description: "Real camera, photorealistic, film grain, anamorphic lens flares",
+    description: "Real. Raw. Filmic.",
     keywords: "photoreal · 35mm · grain · anamorphic",
-    accent: "#9CA3AF",
+    accent: "#FF6B35",
   },
   {
     key: "anime-2d",
     name: "Anime 2D",
-    description: "Hand-drawn animation, cel shading, dramatic lighting, Japanese anime",
+    description: "Bold. Expressive. Dynamic.",
     keywords: "cel-shaded · ink · sakura · dynamic",
-    accent: "#FB7185",
+    accent: "#FF4D8F",
   },
   {
     key: "pixar-3d",
     name: "3D Pixar Style",
-    description: "Soft lighting, subsurface scattering, exaggerated proportions, Pixar render",
+    description: "Warm. Polished. Emotive.",
     keywords: "soft · 3D · expressive · render",
-    accent: "#60A5FA",
+    accent: "#4DA6FF",
   },
   {
     key: "pixel-art",
     name: "Pixel Art",
-    description: "16-bit / 32-bit pixel aesthetic, retro gaming, limited color palette",
+    description: "Retro. Sharp. Nostalgic.",
     keywords: "pixels · 16-bit · retro · CRT",
-    accent: "#34D399",
+    accent: "#9B59B6",
   },
   {
     key: "ghibli",
     name: "Studio Ghibli",
-    description: "Painterly watercolor backgrounds, Miyazaki movement, soft natural light",
+    description: "Painterly. Gentle. Alive.",
     keywords: "painterly · watercolor · gentle · wonder",
-    accent: "#F59E0B",
+    accent: "#27AE60",
   },
   {
     key: "cyberpunk",
     name: "Cyberpunk Neon",
-    description: "Neon lighting, rain-slicked streets, holographic UI, blade runner",
+    description: "Electric. Dark. Futuristic.",
     keywords: "neon · rain · holo · noir",
-    accent: "#22D3EE",
+    accent: "#00FFCC",
   },
   {
     key: "dark-fantasy",
     name: "Dark Fantasy",
-    description: "Gothic, dramatic shadows, fog, medieval/magical environment, dark grade",
+    description: "Gothic. Heavy. Atmospheric.",
     keywords: "gothic · fog · candlelight · arcane",
-    accent: "#A78BFA",
+    accent: "#8B0000",
   },
   {
     key: "claymation",
     name: "Claymation",
-    description: "Stop-motion clay texture, soft rounded forms, tactile warmth",
+    description: "Tactile. Warm. Handmade.",
     keywords: "clay · stop-motion · tactile · warm",
-    accent: "#F472B6",
+    accent: "#F39C12",
   },
   {
     key: "wes-anderson",
     name: "Wes Anderson",
-    description: "Symmetrical framing, pastel palette, deadpan flat lighting, whimsy",
+    description: "Symmetrical. Pastel. Deadpan.",
     keywords: "symmetry · pastel · deadpan · whimsy",
-    accent: "#FBBF24",
+    accent: "#E91E8C",
   },
   {
     key: "documentary",
-    name: "Documentary Handheld",
-    description: "Naturalistic, handheld shake, available light, vérité style",
+    name: "Documentary",
+    description: "Natural. Honest. Vérité.",
     keywords: "handheld · vérité · natural · observational",
-    accent: "#94A3B8",
+    accent: "#95A5A6",
   },
   {
     key: "horror",
     name: "Horror Atmospheric",
-    description: "Deep shadows, desaturated color, slow creeping dread, unsettling angles",
+    description: "Dread. Shadows. Unsettling.",
     keywords: "shadow · desaturated · dread · uncanny",
-    accent: "#EF4444",
+    accent: "#2C2C2C",
   },
   {
     key: "music-video",
-    name: "Music Video — Hyper Edit",
-    description: "Fast cuts, speed ramps, flash transitions, high-energy rhythm editing",
+    name: "Music Video Hyper",
+    description: "Fast. Punchy. Rhythm-driven.",
     keywords: "hyper · ramp · flash · pulse",
-    accent: "#E8FF47",
+    accent: "#FF0066",
   },
 ];
+
+export function styleAccent(name: string | null | undefined): string {
+  if (!name) return "#94A3B8";
+  const m = STYLES.find((s) => s.name === name);
+  return m?.accent ?? "#94A3B8";
+}
 
 export const TONES: Array<{ key: string; label: string; emoji: string }> = [
   { key: "energetic", label: "Energetic", emoji: "⚡" },

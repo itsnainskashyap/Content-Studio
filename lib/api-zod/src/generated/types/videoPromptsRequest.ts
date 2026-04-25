@@ -16,4 +16,12 @@ export interface VideoPromptsRequest {
   totalParts: number;
   /** lastFrameDescription from the previous part for continuation */
   previousLastFrame?: string;
+  /** "english" | "hindi" | "hinglish" — when set, Claude auto-writes a part-specific VO */
+  voiceoverLanguage?: string | null;
+  voiceoverTone?: string | null;
+  /** Optional pre-written script for this part. If absent and voiceoverLanguage is set, the model writes one. */
+  voiceoverScript?: string | null;
+  bgmStyle?: string | null;
+  bgmTempo?: string | null;
+  bgmInstruments?: string[];
 }

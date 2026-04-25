@@ -20,7 +20,29 @@ export const HealthCheckResponse = zod.object({
 export const GenerateStoryBody = zod.object({
   brief: zod.string(),
   genre: zod.string(),
-  duration: zod.number().describe("Total target duration in seconds"),
+  duration: zod
+    .number()
+    .describe(
+      "Total target duration in seconds (kept for backward compatibility, equivalent to totalDurationSeconds)",
+    ),
+  totalDurationSeconds: zod
+    .number()
+    .optional()
+    .describe("Total target duration in seconds"),
+  partsCount: zod
+    .number()
+    .optional()
+    .describe(
+      "Number of 15-second video parts (Math.ceil(totalDurationSeconds\/15))",
+    ),
+  style: zod
+    .string()
+    .optional()
+    .describe('Visual style name, e.g. \"Live Action Cinematic\"'),
+  voiceoverLanguage: zod
+    .string()
+    .optional()
+    .describe('\"none\" | \"english\" | \"hindi\" | \"hinglish\"'),
 });
 
 export const GenerateStoryResponse = zod.object({
@@ -136,6 +158,22 @@ export const GenerateVideoPromptsBody = zod.object({
     .string()
     .optional()
     .describe("lastFrameDescription from the previous part for continuation"),
+  voiceoverLanguage: zod
+    .string()
+    .nullish()
+    .describe(
+      '\"english\" | \"hindi\" | \"hinglish\" — when set, Claude auto-writes a part-specific VO',
+    ),
+  voiceoverTone: zod.string().nullish(),
+  voiceoverScript: zod
+    .string()
+    .nullish()
+    .describe(
+      "Optional pre-written script for this part. If absent and voiceoverLanguage is set, the model writes one.",
+    ),
+  bgmStyle: zod.string().nullish(),
+  bgmTempo: zod.string().nullish(),
+  bgmInstruments: zod.array(zod.string()).optional(),
 });
 
 export const GenerateVideoPromptsResponse = zod.object({
@@ -176,6 +214,19 @@ export const GenerateVideoPromptsResponse = zod.object({
   }),
   lastFrameDescription: zod.string(),
   copyablePrompt: zod.string(),
+  autoVoiceoverScript: zod
+    .string()
+    .nullish()
+    .describe(
+      "VO script written by the model when voiceoverLanguage was set in the request",
+    ),
+  audioSummary: zod
+    .object({
+      voiceoverIncluded: zod.boolean(),
+      bgmIncluded: zod.boolean(),
+      keySyncPoints: zod.array(zod.string()),
+    })
+    .optional(),
 });
 
 /**
