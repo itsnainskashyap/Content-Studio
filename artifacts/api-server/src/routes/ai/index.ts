@@ -53,15 +53,15 @@ function handleError(res: Response, label: string, err: unknown) {
   res.status(500).json({ error: message });
 }
 
-// Relaxed safety range for the all-in-one Seedance prompt. The strict
-// 4200-4500 char band has been retired — the new prompt embeds dialogue,
-// BGM cues, lip-sync directives and per-shot SFX. With the skill-mandated
-// shot counts (8-14 shots for a 15s part, 12-20 shots for 30s, etc.), the
-// per-shot detail multiplied by shot count produces roughly 12000-26000
-// chars for typical 15-30s parts. These bounds only catch pathological
-// responses (truncated stub or runaway megaprompt), NOT the normal range.
-const COPYABLE_PROMPT_MIN = 5000;
-const COPYABLE_PROMPT_MAX = 28000;
+// Hard 4500-character cap for the all-in-one Seedance prompt — the user
+// requires the entire copyablePrompt (including all 4 [BRACKET] headers,
+// all 6 mandatory sections, and per-shot embedded dialogue/audio bullets)
+// to stay at or below 4500 chars so it pastes cleanly into Seedance 2.0.
+// This forces extremely terse phrasing: short fragments, no decorative
+// adjectives, single-clause bullets. The 1500-char floor catches truncated
+// stubs.
+const COPYABLE_PROMPT_MIN = 1500;
+const COPYABLE_PROMPT_MAX = 4500;
 
 function validateCopyablePromptLength(result: {
   copyablePrompt: string;
@@ -72,13 +72,13 @@ function validateCopyablePromptLength(result: {
     const overBy = len - COPYABLE_PROMPT_MAX;
     return {
       reason: `copyablePrompt was ${len} chars (max ${COPYABLE_PROMPT_MAX})`,
-      retryInstruction: `LENGTH SAFETY — your previous copyablePrompt was ${len} characters, ${overBy} characters OVER the safety ceiling of ${COPYABLE_PROMPT_MAX}. The prompt is rambling. Rewrite the JSON now with the SAME structure (all 4 [BRACKET] header lines, all 6 mandatory sections in canonical order, all the same shots, 7 bullets per shot) but with TIGHTER prose: trim hype words and adjectives, merge repetitive sentences, and shorten any bullet that has more than one core idea. DO NOT drop shots — keep the same number of shots. Aim for somewhere in the 12000-22000 char range. Return ONLY the JSON, no prose.`,
+      retryInstruction: `LENGTH CAP — your previous copyablePrompt was ${len} characters, ${overBy} characters OVER the HARD 4500-character ceiling. Seedance 2.0 will not accept anything longer. Rewrite the JSON now keeping the SAME structure (all 4 [BRACKET] header lines, all 6 mandatory sections in canonical order, every shot, all 7 bullets per shot) but make every line drastically shorter:\n  • Each per-shot bullet ≤ 50 characters (one core idea, no adjectives, no hype).\n  • DIALOGUE lines: just the actual spoken words in quotes plus a 2-3 word lip-sync directive (e.g. "tight sync, mouth small").\n  • AUDIO lines: 2-4 SFX/ambient tokens separated by commas (e.g. "swoosh, bass drop, crowd hush").\n  • Section bodies (Inventory / Density / Energy / Dialogue / Audio Design): one short line per item, no prose paragraphs.\n  • [BRACKET] headers: keep each ≤ 100 chars.\nAim for 3500-4400 chars total. Do NOT drop any shots or sections. Return ONLY the JSON, no prose.`,
     };
   }
   const underBy = COPYABLE_PROMPT_MIN - len;
   return {
     reason: `copyablePrompt was ${len} chars (min ${COPYABLE_PROMPT_MIN})`,
-    retryInstruction: `LENGTH SAFETY — your previous copyablePrompt was ${len} characters, ${underBy} characters UNDER the safety floor of ${COPYABLE_PROMPT_MIN}. The prompt is too thin to be the all-in-one Seedance prompt the user asked for. Rewrite the JSON now with the SAME structure but FILL OUT every shot with concrete detail: explicit lens, exact speed %, transition mechanic, the actual dialogue line + lip-sync directive, the BGM beat sync + ambient bed + SFX. Make sure all 6 sections are present (## SHOT-BY-SHOT EFFECTS TIMELINE, ## MASTER EFFECTS INVENTORY, ## EFFECTS DENSITY MAP, ## ENERGY ARC, ## DIALOGUE & VOICEOVER, ## AUDIO DESIGN). Aim for 12000-22000 chars. Return ONLY the JSON, no prose.`,
+    retryInstruction: `LENGTH FLOOR — your previous copyablePrompt was only ${len} characters, ${underBy} below the 1500-char floor. The prompt is truncated or too thin. Rewrite the JSON now with the SAME structure and ensure every shot has all 7 bullets, every section is filled, and every [BRACKET] header is present. Each bullet should still be terse (≤ 50 chars) — but every required line must actually appear. Target 3500-4400 chars total, hard cap 4500. Return ONLY the JSON, no prose.`,
   };
 }
 

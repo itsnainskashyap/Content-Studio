@@ -76,19 +76,30 @@ EFFECTS INVENTORY, EFFECTS DENSITY MAP, ENERGY ARC), then add 2 audio
 sections (DIALOGUE & VOICEOVER, AUDIO DESIGN) so the prompt is fully
 self-contained.
 
-LENGTH GUIDANCE (relaxed safety range, NOT a strict band):
-- Typical sweet spot: ~12000-22000 chars total for a 15s part with the
-  full 8-14 shots. 5-10s parts: ~6000-12000. 20-30s parts: ~18000-26000.
-- Hard safety floor: 5000 chars (anything shorter is suspicious).
-- Hard safety ceiling: 28000 chars (anything longer is rambling).
-- Inside that safety range, prioritise THOROUGHNESS over brevity. Every
-  shot must carry visual + dialogue + audio detail. Never drop a shot
-  to compress; instead, tighten prose: short bullets, no hype words, no
-  redundant adjectives, one core idea per bullet.
+LENGTH CAP (HARD — Seedance 2.0 will reject anything longer):
+- The ENTIRE copyablePrompt — every header, every section, every shot
+  block, every bullet — must fit in 4500 characters total. Aim for
+  3500-4400 chars to leave breathing room.
+- Hard ceiling: 4500 chars. Hard floor: 1500 chars.
+- This means EXTREMELY terse phrasing. Every per-shot bullet ≤ 50
+  characters. Section bodies use one short line per item — no prose
+  paragraphs. [BRACKET] headers ≤ 100 chars each.
 
-NEVER pad with hype words ("epic", "stunning", "breathtaking",
-"absolutely gorgeous"). Every sentence must add a concrete visual,
-camera, speed, transition, dialogue, lip-sync, or audio-design detail.
+DO NOT drop shots or sections to fit. Instead:
+- Use sentence fragments, not full sentences. Drop articles where
+  understandable ("low angle, slow zoom" not "the camera is at a low
+  angle and slowly zooms in").
+- Strip ALL adjectives that don't change meaning ("fast cut" not
+  "lightning-fast cut").
+- DIALOGUE bullet: just [Char, lang]: "spoken line" (lip: tight).
+- AUDIO bullet: 2-4 comma-separated tokens (e.g. kick on beat,
+  crowd hush, glass shatter SFX).
+- Inventory entries: EFFECT NAME (xN) — shots 1,3 — role.
+- Density Map: one line per band. Energy Arc: one line per act.
+
+NEVER pad with hype words ("epic", "stunning", "breathtaking"). Every
+sentence must add a concrete visual, camera, speed, transition,
+dialogue, lip-sync, or audio detail.
 ══════════════════════════════════════════════════════════════
 
 The user's brief, story acts and audio settings are LAW — honor them literally. Do not invent characters, settings or events outside what the story describes. Match the chosen visual style precisely.
@@ -258,12 +269,13 @@ have 7 bullets (EFFECT, visual, camera, speed/timing, transition,
 DIALOGUE, AUDIO). Dialogue and audio design are EMBEDDED in the prompt
 because Seedance generates them at video-generation time.
 
-LENGTH GUIDANCE (relaxed safety range, NOT a strict band):
-- Typical sweet spot: ~12000-22000 chars for a 15s part with the full
-  8-14 shots. 5-10s parts: ~6000-12000; 20-30s: ~18000-26000.
-- Hard safety floor: 5000 chars. Hard safety ceiling: 28000 chars.
-- Inside that range, prioritise THOROUGHNESS over brevity. Tighten
-  prose to fit, never drop shots.
+LENGTH CAP (HARD — Seedance 2.0 will reject anything longer):
+- The ENTIRE refined copyablePrompt must fit in 4500 characters total.
+  Aim for 3500-4400 chars. Hard ceiling 4500, hard floor 1500.
+- Use sentence fragments, not full sentences. Per-shot bullets ≤ 50
+  chars. Section bodies: one short line per item, no prose paragraphs.
+- DO NOT drop shots or sections to fit — instead tighten prose: drop
+  articles, strip non-essential adjectives, use comma-separated tokens.
 ══════════════════════════════════════════════════════════════
 
 You receive: the existing part (full JSON shape), the writer's instruction, the story, the style/audio settings, and — when applicable — the previous part's last-frame description and the next part's first-shot description.
@@ -278,7 +290,7 @@ CRITICAL CONTINUITY RULES (these protect the rest of the video — do NOT violat
 5. DURATION — keep the part roughly the same total duration so the overall part-count math doesn't shift. Don't double the shot count or halve it unless the instruction asks for it.
 6. SCOPE — preserve every field the writer did NOT mention. If they say "shot 3 should be slower", only shot 3 changes meaningfully; the rest of the shots stay intact (you may renumber and update transitions if you removed/added one shot).
 7. SHAPE — return EVERY field of VideoPromptsResponse, every shot, sequential shotNumber starting at 1, the per-skill signature-shot count (1 for ≤10s, 1-2 for 10-20s, 2-3 for 20-30s), a fresh effectsInventory and densityMap that match the new shot list, an updated energyArc, refreshed ## DIALOGUE & VOICEOVER and ## AUDIO DESIGN sections, an updated autoVoiceoverScript (extracted plain spoken text from the refined dialogue), and a regenerated copyablePrompt that follows the COPYABLE PROMPT FORMAT exactly.
-8. COPYABLE PROMPT SHAPE — copyablePrompt must contain the 4 [BRACKET] header lines (each ≤120 chars, omit ones for settings that are off) plus all 6 mandatory sections in canonical order. Per-shot blocks must have all 7 bullets in the prescribed order. Dialogue and audio design are EMBEDDED inside copyablePrompt — that is how Seedance generates them. Length should fall within the relaxed safety range (5000-28000 chars; sweet spot 12000-22000 for a 15s part). Do NOT compress shots to hit a target — be thorough.
+8. COPYABLE PROMPT SHAPE — copyablePrompt must contain the 4 [BRACKET] header lines (each ≤100 chars, omit ones for settings that are off) plus all 6 mandatory sections in canonical order. Per-shot blocks must have all 7 bullets in the prescribed order. Dialogue and audio design are EMBEDDED inside copyablePrompt — that is how Seedance generates them. Total length is HARD-CAPPED at 4500 chars (target 3500-4400). Per-shot bullets ≤ 50 chars; section bodies one terse line per item. Do NOT drop shots or sections to hit the cap — tighten prose instead.
 9. JSON ONLY — no markdown, no prose outside the JSON.
 
 Return JSON in the exact same shape as VideoPromptsResponse:
