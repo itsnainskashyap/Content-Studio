@@ -29,6 +29,18 @@ export type ValidationFailure = {
   retryInstruction: string;
 };
 
+/**
+ * Allows a route to recover from final validation failure by post-processing
+ * the model's attempts (e.g. picking the closest-to-band copyablePrompt
+ * across retries). If present and it returns a non-null value, that value is
+ * returned to the caller instead of throwing. Receives every parsed-but-
+ * failed attempt in chronological order alongside the last validation
+ * failure.
+ */
+export type FinalRecover<T> = (
+  attempts: Array<{ result: T; failure: ValidationFailure }>,
+) => T | null;
+
 export async function generateJson<T>(args: {
   systemPrompt: string;
   userPrompt: string;
@@ -41,8 +53,18 @@ export async function generateJson<T>(args: {
    * even when the model ignores the system prompt's word limit.
    */
   validate?: (result: T) => ValidationFailure | null;
+  /**
+   * Optional final-attempt recovery. After all validation retries are
+   * exhausted, this is called with the last parsed result and the last
+   * validation failure. If it returns a value, that value is returned to
+   * the caller; otherwise a generation-failed error is thrown. Used by
+   * video-prompts to fall back to truncating an over-length copyablePrompt
+   * rather than failing the whole request.
+   */
+  finalRecover?: FinalRecover<T>;
 }): Promise<T> {
-  const { systemPrompt, userPrompt, schema, label, validate } = args;
+  const { systemPrompt, userPrompt, schema, label, validate, finalRecover } =
+    args;
   const maxTokens = maxTokensForLabel(label);
 
   const attempt = async (extraSystem?: string): Promise<T> => {
@@ -89,7 +111,7 @@ export async function generateJson<T>(args: {
         );
       }
       if (failure) {
-        throw new ValidationRetryError(failure);
+        throw new ValidationRetryError(failure, result);
       }
     }
 
@@ -102,6 +124,7 @@ export async function generateJson<T>(args: {
   const MAX_ATTEMPTS = 3;
   let lastErr: unknown;
   let lastValidationFailure: ValidationFailure | null = null;
+  const validationAttempts: Array<{ result: T; failure: ValidationFailure }> = [];
 
   for (let i = 0; i < MAX_ATTEMPTS; i++) {
     try {
@@ -132,8 +155,15 @@ export async function generateJson<T>(args: {
         throw err;
       }
       lastErr = err;
-      lastValidationFailure =
-        err instanceof ValidationRetryError ? err.failure : null;
+      if (err instanceof ValidationRetryError) {
+        lastValidationFailure = err.failure;
+        validationAttempts.push({
+          result: err.result as T,
+          failure: err.failure,
+        });
+      } else {
+        lastValidationFailure = null;
+      }
     }
   }
 
@@ -142,6 +172,26 @@ export async function generateJson<T>(args: {
     { label, finalErr: finalMsg },
     "LLM JSON generation failed after all retries",
   );
+
+  // Try recovery whenever earlier attempts produced parsed-but-failed
+  // candidates, even if the LAST attempt failed for a different reason
+  // (e.g. truncation or invalid JSON). Otherwise we'd discard usable
+  // candidates just because the model's final retry happened to be a
+  // different kind of failure.
+  if (finalRecover && validationAttempts.length > 0) {
+    const recovered = finalRecover(validationAttempts);
+    if (recovered !== null) {
+      logger.warn(
+        {
+          label,
+          attemptCount: validationAttempts.length,
+          finalErr: finalMsg,
+        },
+        "Recovered from validation failure via finalRecover",
+      );
+      return recovered;
+    }
+  }
 
   if (lastValidationFailure) {
     throw new Error(
@@ -158,10 +208,12 @@ export async function generateJson<T>(args: {
 
 class ValidationRetryError extends Error {
   failure: ValidationFailure;
-  constructor(failure: ValidationFailure) {
+  result: unknown;
+  constructor(failure: ValidationFailure, result: unknown) {
     super(failure.reason);
     this.name = "ValidationRetryError";
     this.failure = failure;
+    this.result = result;
   }
 }
 

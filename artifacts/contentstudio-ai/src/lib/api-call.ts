@@ -1,6 +1,11 @@
 import { useCallback, useState } from "react";
 
-const TIMEOUT_MS = 60_000;
+// Story / music / VO generations regularly take 60-150s on rich briefs
+// (especially with Hinglish/Devanagari output). 60s was cutting them off
+// mid-stream and surfacing as "never generated". Match the 240s used by
+// the per-part video-prompts pipeline so we never time out before the
+// model.
+const TIMEOUT_MS = 240_000;
 
 export interface CallState<T> {
   data: T | null;
@@ -9,7 +14,7 @@ export interface CallState<T> {
 }
 
 function normalizeError(err: unknown, aborted: boolean): string {
-  if (aborted) return "Request timed out after 60 seconds. Please try again.";
+  if (aborted) return "Request timed out after 4 minutes. Please try again.";
   if (err && typeof err === "object" && "message" in err) {
     const raw = String((err as { message: unknown }).message);
     const lower = raw.toLowerCase();

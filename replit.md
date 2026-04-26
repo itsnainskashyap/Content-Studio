@@ -1,55 +1,79 @@
-# Workspace
+# Overview
 
-## Overview
+This project is a pnpm workspace monorepo using TypeScript, focused on AI-powered video content creation. It includes an Express API for AI integrations and a React + Vite frontend application called "Content Studio AI" (Seedance 2.0).
 
-pnpm workspace monorepo using TypeScript. Each package manages its own dependencies.
+**Key Capabilities:**
+- AI-driven story generation and continuation.
+- AI-generated video prompts based on stories, supporting iterative part-by-part generation and editing with continuity.
+- AI-generated music briefs and voiceovers.
+- Project management, backup, and restore functionalities in the client.
 
-## Stack
+The business vision is to provide a comprehensive tool for creators to rapidly prototype and develop video concepts using AI, significantly streamlining the pre-production process.
 
-- **Monorepo tool**: pnpm workspaces
-- **Node.js version**: 24
-- **Package manager**: pnpm
-- **TypeScript version**: 5.9
-- **API framework**: Express 5
-- **Database**: PostgreSQL + Drizzle ORM
-- **Validation**: Zod (`zod/v4`), `drizzle-zod`
-- **API codegen**: Orval (from OpenAPI spec)
-- **Build**: esbuild (CJS bundle)
+# User Preferences
 
-## Key Commands
+The user prefers an iterative development approach. They want to be able to stop and restart AI generation processes. They appreciate clear error messages that guide them to actionable solutions. They prefer a dark editorial design with specific color schemes.
 
-- `pnpm run typecheck` — full typecheck across all packages
-- `pnpm run build` — typecheck + build all packages
-- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- `pnpm --filter @workspace/api-server run dev` — run API server locally
+# System Architecture
 
-See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details.
+**Monorepo Structure:**
+- Built as a pnpm workspace monorepo.
+- Each package manages its own dependencies.
 
-## Artifacts
+**Technology Stack:**
+- **Node.js**: v24
+- **TypeScript**: v5.9
+- **Package Manager**: pnpm
+- **API Framework**: Express 5
+- **Database**: PostgreSQL with Drizzle ORM
+- **Validation**: Zod (v4), `drizzle-zod`
+- **API Codegen**: Orval (from OpenAPI spec)
+- **Build Tool**: esbuild (CJS bundle)
 
-- **`artifacts/api-server`** — Express AI API. Routes under `/api/`: `generate-story`, `continue-story`, `generate-video-prompts`, `generate-music-brief`, `generate-voiceover`. Uses Replit AI Integrations (Anthropic Claude). System/user prompts in `src/routes/ai/prompts.ts`. Each handler validates the request body with the generated zod schema (from `lib/api-zod`) and returns a human-readable HTTP 400 (`formatZodError`) before any AI call. Enums and bounds (language, pace, tempo, durations, part counts, energy 1-10) live in `lib/api-spec/openapi.yaml`; regenerate with `pnpm --filter @workspace/api-spec run codegen`. The video-prompts route additionally enforces `part <= totalParts` via `.refine`.
-- **`artifacts/contentstudio-ai`** — React + Vite app for AI video prompt creation (Seedance 2.0). Dark editorial design (#0A0A0A bg, #E8FF47 lime).
-  - Pages: `dashboard`, `story` (Story Builder + inline prompts panel), `prompts` (`/generate`, fallback Quick Video), `music`, `voiceover`, `history`, `settings`.
-  - Project state lives in `localStorage` (see `src/lib/storage.ts`). Key fields per project: `style`, `voiceoverLanguage`, `totalDurationSeconds`, `partsCount`, `parts[]`. `migrateProject()` in `getProjects()` backfills new fields on legacy data.
-  - **Background generation**: `src/lib/generation-context.tsx` provides `<GenerationProvider>` (wrapped in `App.tsx` outside the router). It owns per-project AbortControllers + job state in refs so generation continues running across page navigation. Each completed part is persisted incrementally to localStorage and broadcast via the `cs:projects-changed` event. Components read live job state via `useGeneration()`. **Story page restoration**: when the user navigates back to `/story` mid-generation, the mount effect calls `generation.getJob(currentProjectId)`. If a live job exists (status `running`, `awaiting_next`, `done`, or `error`) — OR if `parts.length > 0` — the page restores `finalized=true` + `showPrompts=true` so the InlinePrompts panel is mounted again and the user sees the in-flight job (parts.length alone is not enough because the very first part can be 30-60s, during which it's still 0).
-  - **Story chat commentary (NEW)**: `StoryResponse` includes an optional `commentary` field — a 2-3 sentence chat-style note from the AI editor. Both `STORY_SYSTEM_PROMPT` and `CONTINUE_STORY_SYSTEM_PROMPT` instruct the model to fill it (initial: hook + signature visual + how mood/palette/music will land; continue: what changed and why it lands better, referencing the writer's instruction). The story page's chat bubble now uses `result.commentary` as the assistant text (with a fallback to the old static "Here's your story." / "Updated. Anything else?" if the field is missing). On project remount it also restores from `current.story.commentary`. Field is optional in the OpenAPI schema, so legacy projects without it still load cleanly.
-  - Inline video prompt generation lives in `src/components/inline-prompts.tsx`. It reads the running job from `useGeneration()`, shows a Stop button while running, and accepts an `autoStart` prop. The Story page passes `autoStart={true}` after Finalize so the FIRST part kicks off automatically. Video prompts are now generated **one part at a time**: after each part finishes, the job sits in `awaiting_next` status and the UI shows a `button-generate-next-prompt` button. The user clicks it to generate the next single part. Continues until all parts are done, then `Copy ALL parts` and `Regenerate from part 1` appear. Per-part client timeout is **240 s**. copyablePrompt is now hard-bounded to **4200-4500 characters** (down from the previous ~14k), which both speeds up generation (smaller output = lower latency) and matches the canonical Seedance format from the bundled video-prompt-builder skill. AI calls go to `/api/generate-video-prompts` which uses Claude `claude-sonnet-4-6` via `@workspace/integrations-anthropic-ai` (Replit-managed Anthropic key). The model is set as a single `MODEL` constant at the top of `artifacts/api-server/src/routes/ai/llm.ts` — every story / shot-list / voiceover / music-brief route goes through that one helper, so changing the model is a one-line edit.
-  - **Per-route output token budget**: `artifacts/api-server/src/routes/ai/llm.ts` picks `max_tokens` per route via `maxTokensForLabel()`. Default is 8192 (story / continue-story / music / voiceover all fit comfortably). Video prompts (`generate-video-prompts` and `edit-video-prompts`) get **12000**. The math: a hard-bounded 4200-4500 char copyablePrompt is ~1500-2000 tokens, structured shots/effectsInventory/densityMap/energyArc are ~1500 tokens, and the autoVoiceoverScript can be HEAVY in Devanagari (Hindi) where each char costs ~2x the tokens of English — a 90s Hindi VO can reach 1500+ tokens by itself. Realistic worst-case ~5.5-7.5K tokens, so 12000 gives safe ~2x headroom and never truncates. **The cap does NOT affect latency** — generation time scales with tokens actually produced, not with the cap. The earlier attempt to drop the cap to 6000 caused immediate truncation on Hindi VO parts (cut off twice in a row → 500 to client) without buying any speed; the real latency win comes from the strict 4200-4500 char copyablePrompt rule in the system prompt, which keeps the model from rambling. The helper still checks `message.stop_reason === "max_tokens"` and throws a distinct truncation error so the user sees an actionable message ("the AI's response was too long and got cut off twice in a row, try a shorter story or fewer shots per part") instead of a generic JSON parse failure. The two-pass retry tailors its reminder: on truncation it asks the model to BE MORE CONCISE, on JSON-shape errors it asks the model to RETURN VALID JSON.
-  - **Story Builder is a chat interface** (`src/pages/story.tsx`). After the initial story is generated, the page becomes a conversation: user messages call `/api/continue-story` with arbitrary refinement instructions ("make act 2 darker", "add a twist", "change the protagonist") and the AI returns the full updated story. A "Finalize" button locks the story and reveals the inline prompts panel which auto-starts video prompt generation. The CONTINUE_STORY_SYSTEM_PROMPT supports append / refine-act / change-character / change-tone / full rewrite / fix-detail.
-  - **copyablePrompt format** uses the EXACT 4-section structure from the bundled video-prompt-builder skill: `## SHOT-BY-SHOT EFFECTS TIMELINE`, `## MASTER EFFECTS INVENTORY`, `## EFFECTS DENSITY MAP`, `## ENERGY ARC`, ending with `LAST FRAME:`. Optional `[VISUAL STYLE]`, `[BACKGROUND MUSIC]`, `[VOICEOVER]`, `[PART]` headers appear above when set.
-  - Sidebar `Current Project` sub-nav is rendered when `storage.getCurrentProject()` returns a project.
-  - Templates modal on the dashboard pre-fills the Story Builder via `sessionStorage["cs_template"]`.
-  - **Fresh "new project" navigation**: Every "new project" entry point — the dashboard hero CTA (`cta-new-project`), the dashboard "New Story" QuickCard (`quick-story`), the history page header button (`button-new-from-history`), the empty-state "Start a project" link, and the sidebar `+` (`link-new-project`) — calls `storage.setCurrentProjectId(null)` in its `onClick` BEFORE wouter navigates to `/story`. Without this, the Story Builder mount effect would call `storage.getCurrentProject()`, find the previously-open project, and rehydrate brief / genre / style / chat / story / parts / `finalized=true` from it — making the page feel like it carried over the previous project's content. With currentProjectId cleared, the mount effect's "no current project, no prefill" branch leaves all state at initial defaults (empty brief, Drama genre, 30s, no style, no VO, no messages, not finalized), giving a true blank page. Clicking a project in history or in the sidebar's Recent Projects list still calls `setCurrentProjectId(p.id)` and intentionally rehydrates that project — only the explicit "new project" buttons reset.
-  - **Auth**: localStorage-based account system in `src/lib/auth.tsx`. Accounts saved to `cs_accounts_v1`, session to `cs_session_v1`. Passwords are SHA-256 fingerprinted (not a security boundary — local-only). `<AuthProvider>` wraps the router in `App.tsx`. The home route renders `Landing` for logged-out users and `Dashboard` for logged-in users; other routes redirect to `/login` when logged out.
-  - **Landing page** (`src/pages/landing.tsx`) + **Login page** (`src/pages/login.tsx`) use plain CSS in `src/index.css` (under "Landing + Auth — custom styles"). Landing has a real photographic cinematic background image with parallax (`public/landing-hero-bg.png`), IntersectionObserver-based reveal-on-scroll for sections, and a sign-in/sign-up flow that supports `?mode=signup`. Floating Triangle/Square/Circle/Hexagon shapes have been removed in favor of the photographic hero.
-  - **Logos**: `public/logo-wide.png` (PC sidebar + landing/auth header) and `public/logo-icon.png` (mobile / auth small marks). Reused via `src/components/brand-logo.tsx` (`<BrandLogo variant="wide|icon|auto" />`).
-  - **Feature icons** (landing page): real PNGs in `public/icon-*.png` — `icon-story-chat.png`, `icon-shot-list.png`, `icon-background-gen.png`, `icon-music-brief.png`, `icon-voiceover.png`, `icon-honest-ai.png`. Rendered via `<img>` inside `.feature-icon-img-wrap` (no Lucide shape icons in the FEATURES array).
-  - **AI-cliché icon swaps** (per user request): `Sparkles` → `Play`, `Star` → `Diamond`, `Bot` → `MessageCircle`, sidebar `Zap` → wide logo image. Applied across `inline-prompts.tsx`, `story.tsx`, `prompts.tsx`, `dashboard.tsx`, `history.tsx`, `voiceover.tsx`, `music.tsx`, and `layout.tsx`.
-  - **Mobile responsiveness**: page wrappers use `px-4 py-8 md:px-12 md:py-14` (was `px-6 py-10`); inline prompt panels use `px-4 md:px-6`; voiceover/BGM info blocks stack with `min-w-full sm:min-w-[260px]/[200px]`; `html, body` have `overflow-x:hidden; max-width:100vw` as a safety net against any wide child causing horizontal scroll. Hero padding drops to `120px 20px 80px` on small screens.
-  - **Copy ALL parts**: `inline-prompts.tsx` exposes a prominent highlighted "Copy ALL N parts" button (testid `button-copy-all-parts`) next to the Download .txt button. Uses Clipboard API with textarea fallback and shows a green "Copied!" state for 2.2s.
-  - **Backup & restore** (`storage.ts` → `backup` helper): exports a JSON envelope `{ type: "contentstudio-ai-export", version: 1, exportedAt, projects: [...] }`. Settings page has Export-all / Import buttons (`button-export-all`, `button-import`, hidden `input-import-file`). History page has a per-project export icon (`button-export-<id>`). Imports never silently overwrite — when an incoming project shares an `id` with an existing one, a conflict modal (`import-conflicts-modal`) lets the user Skip duplicates, Replace existing, or Import as copies (new id, "(imported)" suffix). Invalid / wrong-shape JSON throws `ImportParseError` and surfaces as an error toast.
-  - **Per-part editing with continuity (NEW)**: Each generated video part has an "Edit with prompt" button (header of `PartCard` in `inline-prompts.tsx`). Opens a modal where the user types a free-form instruction ("make shot 3 a slow whip pan", "drop shot 2"). Calls `POST /api/edit-video-prompts` (added to OpenAPI spec — `EditVideoPromptsRequest` with story/style/duration/part/totalParts/instruction/existingPart + optional `previousLastFrame` (from part N-1) and `nextFirstShot` (from part N+1.shots[0].description) + optional voTone/bgm). The server uses `EDIT_VIDEO_PART_SYSTEM_PROMPT` in `prompts.ts` which hard-locks: must reuse part-number, must keep the same shot count/structure shape, MUST start from the given `previousLastFrame` (entry continuity), MUST end so the given `nextFirstShot` still naturally continues from the new last frame (exit continuity). Reuses `VideoPromptsResponse` shape. `edit-video-prompts` label gets the same 16384 max-tokens budget in `llm.ts`. On success, `storage.replaceProjectPart()` persists the new part and `generation-context.replaceJobPart()` updates the in-memory job (also bumps `previousLastFrame` if the edited part was the last completed). Below the per-part body there's also a collapsible "Full Seedance prompt" panel that shows the entire `copyablePrompt` as a `<pre>` block with its own Copy button — so users can see the exact text they're copying without having to download the .txt.
-  - **Cumulative previous-parts memory (NEW)**: Both `POST /api/generate-video-prompts` (next-part generation) and `POST /api/edit-video-prompts` (per-part editing) now accept a `previousParts: string[]` field — one compact text digest per already-generated part. Client-side, `src/lib/part-digest.ts` (`buildPreviousPartDigests`) builds the digest from a `ProjectPart[]` (shots with timestamps + camera + effects + signature flag, energy arc, effects inventory, voiceover script trimmed to ~600 chars middle-elided, last frame). The generation context passes `job.parts` digests when generating the next part; the editor passes all OTHER parts' digests (excluding the part being edited) so the model has cumulative memory and avoids repeating shots, voiceover lines, or signature beats. Server `describePreviousParts()` injects the digests into the user prompt under "ALREADY-GENERATED PARTS — full memory of what was already shown — do NOT repeat shots, voiceover lines, or signature beats; build on what came before". This is on top of the existing `previousLastFrame` (entry continuity) and `nextFirstShot` (exit continuity, edit only) anchors.
-  - **Generation context split (NEW, bugfix)**: `src/lib/generation-context.tsx` was exporting both the `GenerationProvider` component AND the `useGeneration` hook + `GenerationContext`. React-Refresh requires a file to export only components OR only non-component values, otherwise HMR invalidates the Context identity on every edit and consumers throw "useGeneration must be used inside GenerationProvider" even though the Provider IS wrapping them. The hook + context + types are now in `src/lib/use-generation.ts`. `generation-context.tsx` only exports the Provider component. Consumers (`pages/story.tsx`, `components/inline-prompts.tsx`) import `useGeneration` from `@/lib/use-generation`; `App.tsx` continues to import `GenerationProvider` from `@/lib/generation-context`.
-  - **Per-part duration cap fix (NEW, bugfix)**: The merged validation pass capped video-prompts `duration` at 60s/part, which broke any project where `totalDurationSeconds / partsCount > 60` (e.g. a 3-min video in 2 parts = 90s/part). Both `VideoPromptsRequest` and `EditVideoPromptsRequest` now allow `duration: 1-3600` per part — a "part" in this app is a logical chunk of a longer multi-part video, not a single Seedance clip.
+**UI/UX Decisions (Content Studio AI - `artifacts/contentstudio-ai`):**
+- **Design Theme**: Dark editorial design (`#0A0A0A` background, `#E8FF47` lime accents).
+- **Core Pages**: Dashboard, Story Builder, Video Prompts, Music, Voiceover, History, Settings.
+- **Branding**: Uses `public/logo-wide.png` and `public/logo-icon.png`, abstracted via `<BrandLogo />` component.
+- **Feature Icons**: Real PNGs (e.g., `icon-story-chat.png`) used for landing page features, replacing generic Lucide shapes.
+- **Mobile Responsiveness**: Adaptive layouts using `px-4 py-8 md:px-12 md:py-14` for page wrappers, `px-4 md:px-6` for inline panels, and flexible stacking for info blocks. Global `overflow-x:hidden; max-width:100vw` for safety.
+- **Landing Page**: Features a cinematic photographic background with parallax, IntersectionObserver-based scroll reveals, and a sign-in/sign-up flow.
+- **AI-cliché Icon Swaps**: Generic AI icons (Sparkles, Star, Bot, Zap) are replaced with more relevant or branded icons (Play, Diamond, MessageCircle, wide logo).
+
+**Technical Implementations & Feature Specifications:**
+
+**API Server (`artifacts/api-server`):**
+- **AI Integrations**: Routes under `/api/` for `generate-story`, `continue-story`, `generate-video-prompts`, `generate-music-brief`, `generate-voiceover`.
+- **LLM**: Primarily uses Anthropic Claude (via Replit AI Integrations), with `claude-sonnet-4-6` for video prompt generation. The model is centrally configured for easy modification.
+- **Input Validation**: Request bodies are validated using Zod schemas generated from the OpenAPI spec. Invalid requests return HTTP 400 with human-readable errors.
+- **Output Token Budget**: `max_tokens` are dynamically set per route (e.g., 8192 for stories, 12000 for video prompts) to prevent truncation while optimizing for generation speed. Error handling for truncation is explicit, prompting users to be more concise.
+
+**Content Studio AI Frontend (`artifacts/contentstudio-ai`):**
+- **Project State Management**: Utilizes `localStorage` for persisting project data (style, voiceover language, duration, parts count, parts array). Includes `migrateProject()` for backfilling new fields in legacy data.
+- **Background Generation**: Uses a `<GenerationProvider>` to manage `AbortControllers` and job states, allowing AI generation to continue across page navigations. Completed parts are incrementally persisted to `localStorage` and broadcast via events.
+- **Story Builder**: Implemented as a chat interface. Initial story generation is followed by a conversation flow for refinements (`/api/continue-story`). A "Finalize" button locks the story and initiates video prompt generation.
+- **Story Chat Commentary**: AI can provide 2-3 sentence chat-style commentary (`commentary` field in `StoryResponse`) on story generation, explaining changes or creative choices.
+- **Video Prompt Generation**:
+    - Generates one part at a time, allowing user interaction to trigger the next part.
+    - Each part generation is client-side capped at 240 seconds.
+    - `copyablePrompt` is hard-bounded to 4200-4500 characters for faster generation and compatibility with external tools. Server-side enforcement: a `validate` callback in `generateJson` triggers up to 3 LLM retries with corrective length feedback. If retries don't land in band, a `finalRecover` step picks the structurally-complete attempt closest to band (or as a last resort, truncates the smallest overshoot at a section boundary that preserves all four headings).
+    - The `copyablePrompt` is the PURE VISUAL prompt — it intentionally excludes any `[VOICEOVER]` header or `VO:` line. Voiceover lives only in the separate `autoVoiceoverScript` field, rendered in its own UI panel (`inline-prompts.tsx` ~line 769). This separation is what makes the strict 4200-4500 band achievable with rich Devanagari/Hinglish scripts.
+    - Required `copyablePrompt` sections (in this order): `## SHOT-BY-SHOT EFFECTS TIMELINE`, `## MASTER EFFECTS INVENTORY`, `## EFFECTS DENSITY MAP`, `## ENERGY ARC`. Per-section character budgets and a hard shot-count cap (5-8 depending on duration) are baked into the system prompt so the model naturally lands inside the band.
+    - Frontend timeout for AI calls is 240s (`artifacts/contentstudio-ai/src/lib/api-call.ts`) to accommodate worst-case 3-retry runs.
+    - Supports per-part editing via `POST /api/edit-video-prompts`, maintaining continuity across parts using `previousLastFrame` and `nextFirstShot`.
+    - **Cumulative Memory**: Both `generate-video-prompts` and `edit-video-prompts` use `previousParts: string[]` (digests of already-generated parts) to provide cumulative context to the AI, preventing repetition and ensuring consistency.
+    - Displays a "Full Seedance prompt" panel for each part's `copyablePrompt`.
+- **New Project Flow**: Explicitly clears `currentProjectId` in `localStorage` when creating a new project to ensure a blank canvas.
+- **Authentication**: `localStorage`-based account system (`cs_accounts_v1`, `cs_session_v1`). Uses SHA-256 fingerprinting for local-only password hashing. `AuthProvider` wraps the router, redirecting unauthenticated users to `/login`.
+- **Data Management**:
+    - **Backup & Restore**: Projects can be exported (JSON envelope) and imported. The import process handles conflicts (skip, replace, import as copy) and provides error toasts for invalid data.
+    - **Copy All Parts**: Prominent "Copy ALL N parts" button uses Clipboard API for easy transfer.
+- **Development Fixes**: `generation-context` split into `GenerationProvider` and `useGeneration` hook to resolve React-Refresh HMR issues. Video prompt `duration` validation now allows up to 3600s per part, accommodating longer multi-part videos.
+
+# External Dependencies
+
+- **Replit AI Integrations**: Used for accessing Anthropic Claude.
+- **PostgreSQL**: Relational database for storing project data.
+- **Zod**: Schema validation library.
+- **Drizzle ORM**: TypeScript ORM for PostgreSQL.
+- **Orval**: API client and Zod schema generator from OpenAPI specifications.
+- **esbuild**: JavaScript bundler for build processes.

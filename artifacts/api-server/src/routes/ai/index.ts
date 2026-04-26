@@ -14,7 +14,11 @@ import {
   GenerateVoiceoverResponse,
 } from "@workspace/api-zod";
 import { logger } from "../../lib/logger";
-import { generateJson, type ValidationFailure } from "./llm";
+import {
+  generateJson,
+  type ValidationFailure,
+  type FinalRecover,
+} from "./llm";
 import {
   STORY_SYSTEM_PROMPT,
   CONTINUE_STORY_SYSTEM_PROMPT,
@@ -70,6 +74,116 @@ function validateCopyablePromptLength(result: {
     retryInstruction: `LENGTH ENFORCEMENT — your previous copyablePrompt was ${len} characters. That is ${underBy} characters UNDER the required minimum of ${COPYABLE_PROMPT_MIN}. Rewrite the JSON now with the SAME structure but a LONGER copyablePrompt that is between ${COPYABLE_PROMPT_MIN} and ${COPYABLE_PROMPT_MAX} characters total (target ~${Math.round((COPYABLE_PROMPT_MIN + COPYABLE_PROMPT_MAX) / 2)}). Expand every shot with concrete extra detail (lens choice, exact speed percentage, lighting note, sound design beat, transition mechanic) — never with filler words. Keep all four mandatory sections and every shot. Do not go below ${COPYABLE_PROMPT_MIN} or above ${COPYABLE_PROMPT_MAX} characters. Return ONLY the JSON, no prose.`,
   };
 }
+
+const REQUIRED_SECTIONS = [
+  "## SHOT-BY-SHOT EFFECTS TIMELINE",
+  "## MASTER EFFECTS INVENTORY",
+  "## EFFECTS DENSITY MAP",
+  "## ENERGY ARC",
+] as const;
+
+/**
+ * Returns true only when all four required section headings appear in the
+ * canonical order with no duplication. Order is important — downstream
+ * Seedance tooling reads the prompt linearly, so a candidate with shuffled
+ * sections is not a safe recovery target.
+ */
+function hasAllSections(prompt: string): boolean {
+  let cursor = 0;
+  for (const heading of REQUIRED_SECTIONS) {
+    const next = prompt.indexOf(heading, cursor);
+    if (next < 0) return false;
+    if (prompt.indexOf(heading, next + heading.length) >= 0) return false;
+    cursor = next + heading.length;
+  }
+  return true;
+}
+
+/**
+ * Final-attempt fallback for the 4200-4500 char band. We keep ALL four
+ * mandatory sections intact even if it costs us strict band compliance:
+ *
+ *  1. If any retry already lands in the strict 4200-4500 band, use it.
+ *  2. Else, prefer the in-structure attempt closest to the band (penalising
+ *     overshoots more than undershoots). Cap acceptable distance at 1200
+ *     chars so we don't return wildly off-spec output.
+ *  3. As a last resort, truncate the smallest-overshoot attempt — but only
+ *     if the truncation preserves all four required section headings.
+ *  4. If nothing meets these bars, return null so generateJson surfaces a
+ *     clean error to the caller.
+ */
+const recoverCopyablePromptLength: FinalRecover<{ copyablePrompt: string }> = (
+  attempts,
+) => {
+  type Cand = {
+    result: { copyablePrompt: string };
+    len: number;
+    overshoot: number;
+    undershoot: number;
+    inBand: boolean;
+    structurallyComplete: boolean;
+  };
+  const cands: Cand[] = attempts.map(({ result }) => {
+    const len = result.copyablePrompt.length;
+    return {
+      result,
+      len,
+      overshoot: Math.max(0, len - COPYABLE_PROMPT_MAX),
+      undershoot: Math.max(0, COPYABLE_PROMPT_MIN - len),
+      inBand: len >= COPYABLE_PROMPT_MIN && len <= COPYABLE_PROMPT_MAX,
+      structurallyComplete: hasAllSections(result.copyablePrompt),
+    };
+  });
+
+  // 1. Strict in-band wins, prefer structurally complete.
+  const inBand = cands
+    .filter((c) => c.inBand && c.structurallyComplete)
+    .sort((a, b) => Math.abs(4350 - a.len) - Math.abs(4350 - b.len));
+  if (inBand[0]) {
+    logger.warn(
+      { len: inBand[0].len },
+      "Recovered: in-band candidate from earlier attempt",
+    );
+    return inBand[0].result;
+  }
+
+  // 2. Closest in-structure attempt (overshoot penalised 2x undershoot).
+  const scored = cands
+    .filter((c) => c.structurallyComplete)
+    .map((c) => ({ c, dist: c.overshoot * 2 + c.undershoot }))
+    .sort((a, b) => a.dist - b.dist);
+  if (scored[0] && scored[0].dist <= 1200) {
+    logger.warn(
+      {
+        len: scored[0].c.len,
+        overshoot: scored[0].c.overshoot,
+        undershoot: scored[0].c.undershoot,
+      },
+      "Recovered: closest-to-band structurally-complete candidate",
+    );
+    return scored[0].c.result;
+  }
+
+  // 3. Last-resort truncation, but only if it keeps all four sections.
+  const overshooters = cands
+    .filter((c) => c.overshoot > 0)
+    .sort((a, b) => a.len - b.len);
+  for (const c of overshooters) {
+    const slice = c.result.copyablePrompt.slice(0, COPYABLE_PROMPT_MAX);
+    const lastBreak = slice.lastIndexOf("\n");
+    const cut =
+      lastBreak >= COPYABLE_PROMPT_MIN ? slice.slice(0, lastBreak) : slice;
+    if (hasAllSections(cut)) {
+      logger.warn(
+        { originalLen: c.len, recoveredLen: cut.length },
+        "Recovered: truncated over-length attempt while preserving all 4 sections",
+      );
+      return { ...c.result, copyablePrompt: cut };
+    }
+  }
+
+  return null;
+};
 
 function describePreviousParts(previousParts: string[] | undefined): string {
   if (!previousParts || previousParts.length === 0) return "";
@@ -218,12 +332,13 @@ router.post(
         `- Voiceover language: ${voiceoverLanguage}` +
           (voiceoverTone ? ` (tone: ${voiceoverTone})` : "") +
           (voiceoverScript
-            ? `\n  Use this pre-written script verbatim for [VOICEOVER: ...]: ${voiceoverScript}`
-            : `\n  No script provided — AUTO-WRITE one for this part following the audio rules.`),
+            ? `\n  Use this pre-written script verbatim as autoVoiceoverScript: ${voiceoverScript}`
+            : `\n  No script provided — AUTO-WRITE the script for this part into autoVoiceoverScript only.`) +
+          `\n  REMINDER: voiceover lives ONLY in the autoVoiceoverScript JSON field. NEVER put a [VOICEOVER] header or any "VO:" line inside copyablePrompt.`,
       );
     } else {
       audioBlock.push(
-        `- Voiceover: NOT included for this video (omit the [VOICEOVER: ...] block and autoVoiceoverScript should be null).`,
+        `- Voiceover: NOT included for this video (autoVoiceoverScript should be null and copyablePrompt must contain no VO content).`,
       );
     }
     if (bgmStyle) {
@@ -236,7 +351,7 @@ router.post(
       );
     } else {
       audioBlock.push(
-        `- Background music: NOT included (omit the [BACKGROUND MUSIC: ...] block).`,
+        `- Background music: NOT included (omit the [BACKGROUND MUSIC: ...] header line from copyablePrompt).`,
       );
     }
 
@@ -263,6 +378,7 @@ Output the JSON described in the system prompt.`;
         schema: GenerateVideoPromptsResponse,
         label: "generate-video-prompts",
         validate: validateCopyablePromptLength,
+        finalRecover: recoverCopyablePromptLength,
       });
       res.json(result);
     } catch (err) {
@@ -304,12 +420,13 @@ router.post(
         `- Voiceover language: ${voiceoverLanguage}` +
           (voiceoverTone ? ` (tone: ${voiceoverTone})` : "") +
           (voiceoverScript
-            ? `\n  Use this pre-written script verbatim for [VOICEOVER: ...]: ${voiceoverScript}`
-            : `\n  No script provided — auto-write a fresh VO for the refined part if a VO was present originally.`),
+            ? `\n  Use this pre-written script verbatim as autoVoiceoverScript: ${voiceoverScript}`
+            : `\n  No script provided — auto-write a fresh script into autoVoiceoverScript only if VO was present originally.`) +
+          `\n  REMINDER: voiceover lives ONLY in the autoVoiceoverScript JSON field. NEVER put a [VOICEOVER] header or any "VO:" line inside copyablePrompt.`,
       );
     } else {
       audioBlock.push(
-        `- Voiceover: NOT included (omit the [VOICEOVER: ...] block; autoVoiceoverScript should be null).`,
+        `- Voiceover: NOT included (autoVoiceoverScript should be null and copyablePrompt must contain no VO content).`,
       );
     }
     if (bgmStyle) {
@@ -322,7 +439,7 @@ router.post(
       );
     } else {
       audioBlock.push(
-        `- Background music: NOT included (omit the [BACKGROUND MUSIC: ...] block).`,
+        `- Background music: NOT included (omit the [BACKGROUND MUSIC: ...] header line from copyablePrompt).`,
       );
     }
 
@@ -356,6 +473,7 @@ Output the COMPLETE refined VideoPromptsResponse JSON.`;
         schema: EditVideoPromptsResponse,
         label: "edit-video-prompts",
         validate: validateCopyablePromptLength,
+        finalRecover: recoverCopyablePromptLength,
       });
       res.json(result);
     } catch (err) {
