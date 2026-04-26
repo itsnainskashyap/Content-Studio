@@ -22,13 +22,27 @@ function maxTokensForLabel(label: string): number {
   return DEFAULT_MAX_TOKENS;
 }
 
+export type ValidationFailure = {
+  /** Human-readable reason the result is unacceptable. */
+  reason: string;
+  /** Extra system-side instruction appended for the next retry. */
+  retryInstruction: string;
+};
+
 export async function generateJson<T>(args: {
   systemPrompt: string;
   userPrompt: string;
   schema: { parse: (input: unknown) => T };
   label: string;
+  /**
+   * Optional post-parse validator. Return null if the result is acceptable, or
+   * a ValidationFailure to trigger a retry with a targeted instruction. Used
+   * by video-prompts to enforce the strict 4200-4500 char copyablePrompt band
+   * even when the model ignores the system prompt's word limit.
+   */
+  validate?: (result: T) => ValidationFailure | null;
 }): Promise<T> {
-  const { systemPrompt, userPrompt, schema, label } = args;
+  const { systemPrompt, userPrompt, schema, label, validate } = args;
   const maxTokens = maxTokensForLabel(label);
 
   const attempt = async (extraSystem?: string): Promise<T> => {
@@ -56,40 +70,105 @@ export async function generateJson<T>(args: {
     const raw = textBlock.text.trim();
     const jsonText = extractJson(raw);
     const parsed = JSON.parse(jsonText);
-    return schema.parse(parsed);
+    const result = schema.parse(parsed);
+
+    if (validate) {
+      let failure: ValidationFailure | null;
+      try {
+        failure = validate(result);
+      } catch (validatorErr) {
+        // A throw from `validate` itself indicates a bug in OUR validation
+        // code, not in the model output. Surface it immediately rather than
+        // burning more LLM calls on a request that will never succeed.
+        const msg =
+          validatorErr instanceof Error
+            ? validatorErr.message
+            : "unknown validator error";
+        throw new ValidatorBugError(
+          `Internal validator threw for ${label}: ${msg}`,
+        );
+      }
+      if (failure) {
+        throw new ValidationRetryError(failure);
+      }
+    }
+
+    return result;
   };
 
-  try {
-    return await attempt();
-  } catch (firstErr) {
-    const firstMsg = (firstErr as Error).message;
-    logger.warn(
-      { label, err: firstMsg },
-      "First-pass LLM JSON failed; retrying with strict reminder",
-    );
-    // Tailor the retry reminder: if the first failure was truncation, ask
-    // the model to be MORE CONCISE; otherwise nudge it to fix JSON shape.
-    const reminder = firstMsg.includes("truncated")
-      ? "REMINDER: Your previous response was cut off because it was too long. Be MORE CONCISE this time — keep descriptions tight, drop any redundancy, but still return ONLY a single complete valid JSON object exactly matching the schema. No markdown fences, no comments, no prose."
-      : "REMINDER: Return ONLY a single valid JSON object exactly matching the schema described above. Do not include markdown fences, comments, or any prose. The previous attempt failed parsing or validation.";
+  // We allow up to 3 attempts (initial + 2 retries) so a length-band
+  // violation has two chances to self-correct with explicit feedback before
+  // we give up.
+  const MAX_ATTEMPTS = 3;
+  let lastErr: unknown;
+  let lastValidationFailure: ValidationFailure | null = null;
+
+  for (let i = 0; i < MAX_ATTEMPTS; i++) {
     try {
-      return await attempt(reminder);
-    } catch (secondErr) {
-      const secondMsg = (secondErr as Error).message;
-      logger.error(
-        { label, firstErr: firstMsg, secondErr: secondMsg },
-        "LLM JSON generation failed after retry",
-      );
-      // Distinguish truncation from invalid JSON so the user sees a useful
-      // message in the toast/error card instead of a generic one.
-      const truncated =
-        firstMsg.includes("truncated") || secondMsg.includes("truncated");
-      throw new Error(
-        truncated
-          ? `Generation failed for ${label}: the AI's response was too long and got cut off twice in a row. Try a shorter story or fewer shots per part, then try again.`
-          : `Generation failed for ${label}. The model returned an invalid response. Please try again.`,
-      );
+      let extra: string | undefined;
+      if (i > 0) {
+        const prevMsg = (lastErr as Error)?.message ?? "";
+        if (lastValidationFailure) {
+          extra = lastValidationFailure.retryInstruction;
+        } else if (prevMsg.includes("truncated")) {
+          extra =
+            "REMINDER: Your previous response was cut off because it was too long. Be MORE CONCISE this time — keep descriptions tight, drop any redundancy, but still return ONLY a single complete valid JSON object exactly matching the schema. No markdown fences, no comments, no prose.";
+        } else {
+          extra =
+            "REMINDER: Return ONLY a single valid JSON object exactly matching the schema described above. Do not include markdown fences, comments, or any prose. The previous attempt failed parsing or validation.";
+        }
+        logger.warn(
+          { label, attempt: i + 1, reason: lastValidationFailure?.reason ?? prevMsg },
+          "Retrying LLM call with corrective instruction",
+        );
+      }
+      return await attempt(extra);
+    } catch (err) {
+      // A bug in our own validator code is non-recoverable — bail out
+      // immediately so we don't burn more model calls on a request that
+      // will never pass validation.
+      if (err instanceof ValidatorBugError) {
+        logger.error({ label, err: err.message }, "Validator bug — aborting");
+        throw err;
+      }
+      lastErr = err;
+      lastValidationFailure =
+        err instanceof ValidationRetryError ? err.failure : null;
     }
+  }
+
+  const finalMsg = (lastErr as Error)?.message ?? "unknown error";
+  logger.error(
+    { label, finalErr: finalMsg },
+    "LLM JSON generation failed after all retries",
+  );
+
+  if (lastValidationFailure) {
+    throw new Error(
+      `Generation failed for ${label}: ${lastValidationFailure.reason}. Please try again.`,
+    );
+  }
+  const truncated = finalMsg.includes("truncated");
+  throw new Error(
+    truncated
+      ? `Generation failed for ${label}: the AI's response was too long and got cut off. Try a shorter story or fewer shots per part, then try again.`
+      : `Generation failed for ${label}. The model returned an invalid response. Please try again.`,
+  );
+}
+
+class ValidationRetryError extends Error {
+  failure: ValidationFailure;
+  constructor(failure: ValidationFailure) {
+    super(failure.reason);
+    this.name = "ValidationRetryError";
+    this.failure = failure;
+  }
+}
+
+class ValidatorBugError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ValidatorBugError";
   }
 }
 

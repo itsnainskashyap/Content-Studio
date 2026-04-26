@@ -14,7 +14,7 @@ import {
   GenerateVoiceoverResponse,
 } from "@workspace/api-zod";
 import { logger } from "../../lib/logger";
-import { generateJson } from "./llm";
+import { generateJson, type ValidationFailure } from "./llm";
 import {
   STORY_SYSTEM_PROMPT,
   CONTINUE_STORY_SYSTEM_PROMPT,
@@ -47,6 +47,28 @@ function handleError(res: Response, label: string, err: unknown) {
   logger.error({ err, label }, "AI route error");
   const message = err instanceof Error ? err.message : "Unknown server error";
   res.status(500).json({ error: message });
+}
+
+const COPYABLE_PROMPT_MIN = 4200;
+const COPYABLE_PROMPT_MAX = 4500;
+
+function validateCopyablePromptLength(result: {
+  copyablePrompt: string;
+}): ValidationFailure | null {
+  const len = result.copyablePrompt.length;
+  if (len >= COPYABLE_PROMPT_MIN && len <= COPYABLE_PROMPT_MAX) return null;
+  if (len > COPYABLE_PROMPT_MAX) {
+    const overBy = len - COPYABLE_PROMPT_MAX;
+    return {
+      reason: `copyablePrompt was ${len} chars (max ${COPYABLE_PROMPT_MAX})`,
+      retryInstruction: `LENGTH ENFORCEMENT — your previous copyablePrompt was ${len} characters. That is ${overBy} characters OVER the hard cap of ${COPYABLE_PROMPT_MAX}. Rewrite the JSON now with the SAME structure but a MUCH SHORTER copyablePrompt that is between ${COPYABLE_PROMPT_MIN} and ${COPYABLE_PROMPT_MAX} characters total (target ~${Math.round((COPYABLE_PROMPT_MIN + COPYABLE_PROMPT_MAX) / 2)}). Trim verbose adjectives, redundant phrasing, and any sentence that does not add a concrete visual / camera / speed / transition / audio detail. Keep all four mandatory sections (## SHOT-BY-SHOT EFFECTS TIMELINE, ## MASTER EFFECTS INVENTORY, ## EFFECTS DENSITY MAP, ## ENERGY ARC), keep every shot, but compress every line. This length rule is a HARD requirement — do not exceed ${COPYABLE_PROMPT_MAX} characters under any circumstances. Return ONLY the JSON, no prose.`,
+    };
+  }
+  const underBy = COPYABLE_PROMPT_MIN - len;
+  return {
+    reason: `copyablePrompt was ${len} chars (min ${COPYABLE_PROMPT_MIN})`,
+    retryInstruction: `LENGTH ENFORCEMENT — your previous copyablePrompt was ${len} characters. That is ${underBy} characters UNDER the required minimum of ${COPYABLE_PROMPT_MIN}. Rewrite the JSON now with the SAME structure but a LONGER copyablePrompt that is between ${COPYABLE_PROMPT_MIN} and ${COPYABLE_PROMPT_MAX} characters total (target ~${Math.round((COPYABLE_PROMPT_MIN + COPYABLE_PROMPT_MAX) / 2)}). Expand every shot with concrete extra detail (lens choice, exact speed percentage, lighting note, sound design beat, transition mechanic) — never with filler words. Keep all four mandatory sections and every shot. Do not go below ${COPYABLE_PROMPT_MIN} or above ${COPYABLE_PROMPT_MAX} characters. Return ONLY the JSON, no prose.`,
+  };
 }
 
 function describePreviousParts(previousParts: string[] | undefined): string {
@@ -240,6 +262,7 @@ Output the JSON described in the system prompt.`;
         userPrompt,
         schema: GenerateVideoPromptsResponse,
         label: "generate-video-prompts",
+        validate: validateCopyablePromptLength,
       });
       res.json(result);
     } catch (err) {
@@ -332,6 +355,7 @@ Output the COMPLETE refined VideoPromptsResponse JSON.`;
         userPrompt,
         schema: EditVideoPromptsResponse,
         label: "edit-video-prompts",
+        validate: validateCopyablePromptLength,
       });
       res.json(result);
     } catch (err) {
