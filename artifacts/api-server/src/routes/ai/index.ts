@@ -53,8 +53,15 @@ function handleError(res: Response, label: string, err: unknown) {
   res.status(500).json({ error: message });
 }
 
-const COPYABLE_PROMPT_MIN = 4200;
-const COPYABLE_PROMPT_MAX = 4500;
+// Relaxed safety range for the all-in-one Seedance prompt. The strict
+// 4200-4500 char band has been retired — the new prompt embeds dialogue,
+// BGM cues, lip-sync directives and per-shot SFX. With the skill-mandated
+// shot counts (8-14 shots for a 15s part, 12-20 shots for 30s, etc.), the
+// per-shot detail multiplied by shot count produces roughly 12000-26000
+// chars for typical 15-30s parts. These bounds only catch pathological
+// responses (truncated stub or runaway megaprompt), NOT the normal range.
+const COPYABLE_PROMPT_MIN = 5000;
+const COPYABLE_PROMPT_MAX = 28000;
 
 function validateCopyablePromptLength(result: {
   copyablePrompt: string;
@@ -65,14 +72,27 @@ function validateCopyablePromptLength(result: {
     const overBy = len - COPYABLE_PROMPT_MAX;
     return {
       reason: `copyablePrompt was ${len} chars (max ${COPYABLE_PROMPT_MAX})`,
-      retryInstruction: `LENGTH ENFORCEMENT — your previous copyablePrompt was ${len} characters. That is ${overBy} characters OVER the hard cap of ${COPYABLE_PROMPT_MAX}. Rewrite the JSON now with the SAME structure but a MUCH SHORTER copyablePrompt that is between ${COPYABLE_PROMPT_MIN} and ${COPYABLE_PROMPT_MAX} characters total (target ~${Math.round((COPYABLE_PROMPT_MIN + COPYABLE_PROMPT_MAX) / 2)}). Trim verbose adjectives, redundant phrasing, and any sentence that does not add a concrete visual / camera / speed / transition / audio detail. Keep all four mandatory sections (## SHOT-BY-SHOT EFFECTS TIMELINE, ## MASTER EFFECTS INVENTORY, ## EFFECTS DENSITY MAP, ## ENERGY ARC), keep every shot, but compress every line. This length rule is a HARD requirement — do not exceed ${COPYABLE_PROMPT_MAX} characters under any circumstances. Return ONLY the JSON, no prose.`,
+      retryInstruction: `LENGTH SAFETY — your previous copyablePrompt was ${len} characters, ${overBy} characters OVER the safety ceiling of ${COPYABLE_PROMPT_MAX}. The prompt is rambling. Rewrite the JSON now with the SAME structure (all 4 [BRACKET] header lines, all 6 mandatory sections in canonical order, all the same shots, 7 bullets per shot) but with TIGHTER prose: trim hype words and adjectives, merge repetitive sentences, and shorten any bullet that has more than one core idea. DO NOT drop shots — keep the same number of shots. Aim for somewhere in the 12000-22000 char range. Return ONLY the JSON, no prose.`,
     };
   }
   const underBy = COPYABLE_PROMPT_MIN - len;
   return {
     reason: `copyablePrompt was ${len} chars (min ${COPYABLE_PROMPT_MIN})`,
-    retryInstruction: `LENGTH ENFORCEMENT — your previous copyablePrompt was ${len} characters. That is ${underBy} characters UNDER the required minimum of ${COPYABLE_PROMPT_MIN}. Rewrite the JSON now with the SAME structure but a LONGER copyablePrompt that is between ${COPYABLE_PROMPT_MIN} and ${COPYABLE_PROMPT_MAX} characters total (target ~${Math.round((COPYABLE_PROMPT_MIN + COPYABLE_PROMPT_MAX) / 2)}). Expand every shot with concrete extra detail (lens choice, exact speed percentage, lighting note, sound design beat, transition mechanic) — never with filler words. Keep all four mandatory sections and every shot. Do not go below ${COPYABLE_PROMPT_MIN} or above ${COPYABLE_PROMPT_MAX} characters. Return ONLY the JSON, no prose.`,
+    retryInstruction: `LENGTH SAFETY — your previous copyablePrompt was ${len} characters, ${underBy} characters UNDER the safety floor of ${COPYABLE_PROMPT_MIN}. The prompt is too thin to be the all-in-one Seedance prompt the user asked for. Rewrite the JSON now with the SAME structure but FILL OUT every shot with concrete detail: explicit lens, exact speed %, transition mechanic, the actual dialogue line + lip-sync directive, the BGM beat sync + ambient bed + SFX. Make sure all 6 sections are present (## SHOT-BY-SHOT EFFECTS TIMELINE, ## MASTER EFFECTS INVENTORY, ## EFFECTS DENSITY MAP, ## ENERGY ARC, ## DIALOGUE & VOICEOVER, ## AUDIO DESIGN). Aim for 12000-22000 chars. Return ONLY the JSON, no prose.`,
   };
+}
+
+/**
+ * Per the video-prompt-builder skill, shot counts are tied to part duration.
+ * We only enforce the MINIMUM (skill mandates rapid-cut density); going over
+ * is acceptable and just logged.
+ */
+function expectedShotRange(durationSec: number): [number, number] {
+  if (durationSec <= 10) return [4, 7];
+  if (durationSec <= 20) return [8, 14];
+  if (durationSec <= 30) return [12, 20];
+  // 30s+: scale linearly at ~0.5-0.7 shots per second.
+  return [Math.ceil(durationSec * 0.5), Math.ceil(durationSec * 0.7)];
 }
 
 const REQUIRED_SECTIONS = [
@@ -80,110 +100,259 @@ const REQUIRED_SECTIONS = [
   "## MASTER EFFECTS INVENTORY",
   "## EFFECTS DENSITY MAP",
   "## ENERGY ARC",
+  "## DIALOGUE & VOICEOVER",
+  "## AUDIO DESIGN",
 ] as const;
 
+const REQUIRED_BRACKET_HEADER = "[VISUAL STYLE";
+const PART_BRACKET_HEADER = "[PART";
+
 /**
- * Returns true only when all four required section headings appear in the
- * canonical order with no duplication. Order is important — downstream
- * Seedance tooling reads the prompt linearly, so a candidate with shuffled
- * sections is not a safe recovery target.
+ * Returns the first missing required-section name, or null if every
+ * required section is present in canonical order.
  */
-function hasAllSections(prompt: string): boolean {
+function findMissingSection(prompt: string): string | null {
   let cursor = 0;
   for (const heading of REQUIRED_SECTIONS) {
     const next = prompt.indexOf(heading, cursor);
-    if (next < 0) return false;
-    if (prompt.indexOf(heading, next + heading.length) >= 0) return false;
+    if (next < 0) return heading;
     cursor = next + heading.length;
   }
-  return true;
+  return null;
 }
 
 /**
- * Final-attempt fallback for the 4200-4500 char band. We keep ALL four
- * mandatory sections intact even if it costs us strict band compliance:
+ * Single source of truth for the structural shape of a video-prompt
+ * response. Used both by the live validator (which produces retry
+ * instructions) and by the final-recovery filter (which silently rejects
+ * malformed candidates). Returning the same predicate from both code
+ * paths means recovery cannot accept anything the validator would have
+ * rejected on shape grounds.
  *
- *  1. If any retry already lands in the strict 4200-4500 band, use it.
- *  2. Else, prefer the in-structure attempt closest to the band (penalising
- *     overshoots more than undershoots). Cap acceptable distance at 1200
- *     chars so we don't return wildly off-spec output.
- *  3. As a last resort, truncate the smallest-overshoot attempt — but only
- *     if the truncation preserves all four required section headings.
- *  4. If nothing meets these bars, return null so generateJson surfaces a
- *     clean error to the caller.
+ * Checks (in priority order):
+ *  - [VISUAL STYLE: ...] header present
+ *  - [PART: ...] header present
+ *  - All 6 mandatory ## sections in canonical order
+ *  - Per-shot bullet shape: each shot has at least one "• DIALOGUE:" and
+ *    one "• AUDIO:" bullet. Per-shot DIALOGUE/AUDIO is the entire reason
+ *    we embed audio inside copyablePrompt — without these bullets the
+ *    paste-into-Seedance promise is broken.
+ *  - Shot count within the skill's per-duration range (both bounds).
  */
-const recoverCopyablePromptLength: FinalRecover<{ copyablePrompt: string }> = (
-  attempts,
-) => {
-  type Cand = {
-    result: { copyablePrompt: string };
-    len: number;
-    overshoot: number;
-    undershoot: number;
-    inBand: boolean;
-    structurallyComplete: boolean;
-  };
-  const cands: Cand[] = attempts.map(({ result }) => {
-    const len = result.copyablePrompt.length;
+type ShapeIssue = { code: string; message: string; retry: string };
+
+function checkVideoPromptShape(
+  result: { copyablePrompt: string; shots: ReadonlyArray<unknown> },
+  durationSec: number,
+): ShapeIssue | null {
+  const [minShots, maxShots] = expectedShotRange(durationSec);
+  const cp = result.copyablePrompt;
+
+  if (cp.indexOf(REQUIRED_BRACKET_HEADER) < 0) {
     return {
-      result,
-      len,
-      overshoot: Math.max(0, len - COPYABLE_PROMPT_MAX),
-      undershoot: Math.max(0, COPYABLE_PROMPT_MIN - len),
-      inBand: len >= COPYABLE_PROMPT_MIN && len <= COPYABLE_PROMPT_MAX,
-      structurallyComplete: hasAllSections(result.copyablePrompt),
+      code: "missing-visual-style-header",
+      message: "copyablePrompt missing [VISUAL STYLE ...] header",
+      retry: `STRUCTURE — your previous copyablePrompt is missing the required "[VISUAL STYLE: ...]" bracket header line at the very top. Rewrite the JSON now with the same content but ensure copyablePrompt opens with all required header lines: [VISUAL STYLE: ...], [BACKGROUND MUSIC: ...] if BGM is enabled, [VOICEOVER: ...] if voiceover is enabled, then [PART: N of M | ...]. Then continue with all 6 mandatory ## sections in canonical order. Return ONLY the JSON, no prose.`,
     };
-  });
-
-  // 1. Strict in-band wins, prefer structurally complete.
-  const inBand = cands
-    .filter((c) => c.inBand && c.structurallyComplete)
-    .sort((a, b) => Math.abs(4350 - a.len) - Math.abs(4350 - b.len));
-  if (inBand[0]) {
-    logger.warn(
-      { len: inBand[0].len },
-      "Recovered: in-band candidate from earlier attempt",
-    );
-    return inBand[0].result;
+  }
+  if (cp.indexOf(PART_BRACKET_HEADER) < 0) {
+    return {
+      code: "missing-part-header",
+      message: "copyablePrompt missing [PART ...] header",
+      retry: `STRUCTURE — your previous copyablePrompt is missing the required "[PART: N of M | ...]" bracket header line. Rewrite the JSON now keeping every shot and section but add the [PART: ${durationSec}s ...] line in the headers block at the top of copyablePrompt. Return ONLY the JSON, no prose.`,
+    };
+  }
+  const missing = findMissingSection(cp);
+  if (missing !== null) {
+    return {
+      code: "missing-section",
+      message: `copyablePrompt missing "${missing}" section`,
+      retry: `STRUCTURE — your previous copyablePrompt is missing the "${missing}" section (or it appears out of order). All 6 mandatory ## sections must appear in this exact order: ## SHOT-BY-SHOT EFFECTS TIMELINE, ## MASTER EFFECTS INVENTORY, ## EFFECTS DENSITY MAP, ## ENERGY ARC, ## DIALOGUE & VOICEOVER, ## AUDIO DESIGN. Rewrite the JSON now keeping every shot and the same prose detail but ensure all 6 sections appear in order. Return ONLY the JSON, no prose.`,
+    };
   }
 
-  // 2. Closest in-structure attempt (overshoot penalised 2x undershoot).
-  const scored = cands
-    .filter((c) => c.structurallyComplete)
-    .map((c) => ({ c, dist: c.overshoot * 2 + c.undershoot }))
-    .sort((a, b) => a.dist - b.dist);
-  if (scored[0] && scored[0].dist <= 1200) {
-    logger.warn(
-      {
-        len: scored[0].c.len,
-        overshoot: scored[0].c.overshoot,
-        undershoot: scored[0].c.undershoot,
-      },
-      "Recovered: closest-to-band structurally-complete candidate",
-    );
-    return scored[0].c.result;
+  const shotsCount = result.shots?.length ?? 0;
+  if (shotsCount < minShots) {
+    return {
+      code: "too-few-shots",
+      message: `only ${shotsCount} shots for a ${durationSec}s part (skill requires ${minShots}-${maxShots})`,
+      retry: `SHOT-COUNT ENFORCEMENT — your previous response had only ${shotsCount} shots in shots[] for a ${durationSec}-second part. The video-prompt-builder skill REQUIRES at least ${minShots} shots (recommended range: ${minShots}-${maxShots}). The Seedance look depends on rapid cuts. Rewrite the JSON now with ${minShots}-${maxShots} shots, each 1-2 seconds long. Each shot must still carry all 7 bullets in copyablePrompt (EFFECT, visual, camera, speed/timing, transition, DIALOGUE, AUDIO). Update effectsInventory, densityMap, the per-shot SFX entries inside ## AUDIO DESIGN, and the per-shot dialogue entries inside ## DIALOGUE & VOICEOVER to match the new shot list. Keep all 6 ## sections and the 4 [BRACKET] headers. Return ONLY the JSON, no prose.`,
+    };
+  }
+  if (shotsCount > maxShots) {
+    return {
+      code: "too-many-shots",
+      message: `${shotsCount} shots for a ${durationSec}s part (skill ceiling is ${maxShots})`,
+      retry: `SHOT-COUNT ENFORCEMENT — your previous response had ${shotsCount} shots in shots[] for a ${durationSec}-second part. The video-prompt-builder skill caps a ${durationSec}s part at ${maxShots} shots (range: ${minShots}-${maxShots}). Going over makes Seedance pacing feel hectic and breaks per-shot timing math. Consolidate or trim shots so the total is between ${minShots} and ${maxShots}. Each remaining shot must still carry all 7 bullets in copyablePrompt (EFFECT, visual, camera, speed/timing, transition, DIALOGUE, AUDIO). Update effectsInventory, densityMap, the per-shot SFX entries inside ## AUDIO DESIGN, and the per-shot dialogue entries inside ## DIALOGUE & VOICEOVER to match the new shot list. Keep all 6 ## sections and the 4 [BRACKET] headers. Return ONLY the JSON, no prose.`,
+    };
   }
 
-  // 3. Last-resort truncation, but only if it keeps all four sections.
-  const overshooters = cands
-    .filter((c) => c.overshoot > 0)
-    .sort((a, b) => a.len - b.len);
-  for (const c of overshooters) {
-    const slice = c.result.copyablePrompt.slice(0, COPYABLE_PROMPT_MAX);
-    const lastBreak = slice.lastIndexOf("\n");
-    const cut =
-      lastBreak >= COPYABLE_PROMPT_MIN ? slice.slice(0, lastBreak) : slice;
-    if (hasAllSections(cut)) {
-      logger.warn(
-        { originalLen: c.len, recoveredLen: cut.length },
-        "Recovered: truncated over-length attempt while preserving all 4 sections",
-      );
-      return { ...c.result, copyablePrompt: cut };
-    }
+  // Per-shot bullet shape: each shot needs at least one DIALOGUE and one
+  // AUDIO line. We count global occurrences inside copyablePrompt — a
+  // strictly correct count proves every shot block has the embedded
+  // audio that makes the Seedance paste-and-go promise hold.
+  const dialogueBullets = (cp.match(/^•\s*DIALOGUE:/gm) || []).length;
+  const audioBullets = (cp.match(/^•\s*AUDIO:/gm) || []).length;
+  if (dialogueBullets < shotsCount) {
+    return {
+      code: "missing-dialogue-bullets",
+      message: `only ${dialogueBullets} • DIALOGUE: bullets for ${shotsCount} shots`,
+      retry: `PER-SHOT EMBEDDED AUDIO — your previous copyablePrompt has only ${dialogueBullets} "• DIALOGUE:" bullets but ${shotsCount} shots. Every shot block in ## SHOT-BY-SHOT EFFECTS TIMELINE must include a "• DIALOGUE:" bullet (use "• DIALOGUE: (silent)" for shots with no spoken line) AND a "• AUDIO:" bullet. This is what lets Seedance render embedded voice + SFX from a single paste. Rewrite the JSON now keeping every shot and section but ensure each shot has both DIALOGUE and AUDIO bullets in the prescribed 7-bullet order. Return ONLY the JSON, no prose.`,
+    };
+  }
+  if (audioBullets < shotsCount) {
+    return {
+      code: "missing-audio-bullets",
+      message: `only ${audioBullets} • AUDIO: bullets for ${shotsCount} shots`,
+      retry: `PER-SHOT EMBEDDED AUDIO — your previous copyablePrompt has only ${audioBullets} "• AUDIO:" bullets but ${shotsCount} shots. Every shot block in ## SHOT-BY-SHOT EFFECTS TIMELINE must include a "• AUDIO:" bullet describing the per-shot SFX and BGM cue, and a "• DIALOGUE:" bullet (use "(silent)" if no line). This is what makes the Seedance paste produce a complete audio-visual scene. Rewrite the JSON now keeping every shot and section but ensure each shot has both DIALOGUE and AUDIO bullets in the prescribed 7-bullet order. Return ONLY the JSON, no prose.`,
+    };
   }
 
   return null;
-};
+}
+
+/**
+ * Build a validator that runs the length safety check first (cheap to
+ * verify, retry instructions are length-specific) and then the unified
+ * shape predicate.
+ */
+function makeVideoPromptValidator(
+  durationSec: number,
+  label: string,
+): (result: {
+  copyablePrompt: string;
+  shots: ReadonlyArray<unknown>;
+}) => ValidationFailure | null {
+  return (result) => {
+    const lenFailure = validateCopyablePromptLength(result);
+    if (lenFailure) return lenFailure;
+    const shape = checkVideoPromptShape(result, durationSec);
+    if (shape) {
+      return {
+        reason: `${label}: ${shape.message}`,
+        retryInstruction: shape.retry,
+      };
+    }
+    return null;
+  };
+}
+
+/**
+ * Build a final-attempt fallback when validation retries don't all pass.
+ * Every recovered candidate must pass the SAME unified shape predicate
+ * the validator uses (`checkVideoPromptShape`) — that means required
+ * bracket headers, all 6 ## sections in canonical order, per-shot
+ * DIALOGUE/AUDIO bullets, and a shot count inside the skill's range.
+ * Recovery never accepts something the validator would have rejected.
+ *
+ *  1. If any retry lands in the safety range AND is fully shape-compliant,
+ *     use it (closest to TARGET wins).
+ *  2. Else, accept the closest-to-range fully shape-compliant candidate,
+ *     but only if it's within 1500 chars of the safety range (i.e.
+ *     between 3500 and 29500 chars). Anything further is too malformed
+ *     to silently ship.
+ *  3. As a last resort, truncate the smallest-overshoot attempt at a line
+ *     boundary, but only if the truncated prompt still passes the full
+ *     shape predicate after the cut.
+ *  4. If nothing meets these bars, return null so generateJson surfaces a
+ *     clean error to the caller.
+ */
+function makeRecoverCopyablePrompt(
+  durationSec: number,
+  label: string,
+): FinalRecover<{ copyablePrompt: string; shots: ReadonlyArray<unknown> }> {
+  return (attempts) => {
+    const TARGET = Math.round((COPYABLE_PROMPT_MIN + COPYABLE_PROMPT_MAX) / 2);
+    type Cand = {
+      result: { copyablePrompt: string; shots: ReadonlyArray<unknown> };
+      len: number;
+      overshoot: number;
+      undershoot: number;
+      shotsCount: number;
+      inSafetyRange: boolean;
+      shapeOk: boolean;
+    };
+    const cands: Cand[] = attempts.map(({ result }) => {
+      const len = result.copyablePrompt.length;
+      const shotsCount = result.shots?.length ?? 0;
+      return {
+        result,
+        len,
+        overshoot: Math.max(0, len - COPYABLE_PROMPT_MAX),
+        undershoot: Math.max(0, COPYABLE_PROMPT_MIN - len),
+        shotsCount,
+        inSafetyRange:
+          len >= COPYABLE_PROMPT_MIN && len <= COPYABLE_PROMPT_MAX,
+        shapeOk: checkVideoPromptShape(result, durationSec) === null,
+      };
+    });
+
+    // 1. In safety range AND fully shape-compliant. Closest to TARGET wins.
+    const inRange = cands
+      .filter((c) => c.inSafetyRange && c.shapeOk)
+      .sort((a, b) => Math.abs(TARGET - a.len) - Math.abs(TARGET - b.len));
+    if (inRange[0]) {
+      logger.warn(
+        { label, len: inRange[0].len, shots: inRange[0].shotsCount },
+        "Recovered: in-safety-range candidate from earlier attempt",
+      );
+      return inRange[0].result;
+    }
+
+    // 2. Fully shape-compliant but slightly outside the length safety
+    //    range. Tolerance: 1500 chars (so 3500–29500). Overshoot is
+    //    penalised 2x undershoot — a short-but-complete prompt is more
+    //    useful than a runaway one.
+    const TOLERANCE = 1500;
+    const scored = cands
+      .filter((c) => c.shapeOk)
+      .map((c) => ({ c, dist: c.overshoot * 2 + c.undershoot }))
+      .sort((a, b) => a.dist - b.dist);
+    if (scored[0] && scored[0].dist <= TOLERANCE) {
+      logger.warn(
+        {
+          label,
+          len: scored[0].c.len,
+          shots: scored[0].c.shotsCount,
+          overshoot: scored[0].c.overshoot,
+          undershoot: scored[0].c.undershoot,
+        },
+        "Recovered: closest-to-range fully shape-compliant candidate",
+      );
+      return scored[0].c.result;
+    }
+
+    // 3. Last-resort truncation, only when the truncated prompt still
+    //    passes the unified shape check (sections + headers + per-shot
+    //    DIALOGUE/AUDIO bullets + shot count). Truncation typically
+    //    drops the tail, so passing the predicate after the cut is the
+    //    only safe acceptance criterion.
+    const overshooters = cands
+      .filter((c) => c.overshoot > 0)
+      .sort((a, b) => a.len - b.len);
+    for (const c of overshooters) {
+      const slice = c.result.copyablePrompt.slice(0, COPYABLE_PROMPT_MAX);
+      const lastBreak = slice.lastIndexOf("\n");
+      const cut =
+        lastBreak >= COPYABLE_PROMPT_MIN ? slice.slice(0, lastBreak) : slice;
+      const truncated = { ...c.result, copyablePrompt: cut };
+      if (checkVideoPromptShape(truncated, durationSec) === null) {
+        logger.warn(
+          {
+            label,
+            originalLen: c.len,
+            recoveredLen: cut.length,
+            shots: c.shotsCount,
+          },
+          "Recovered: truncated over-length attempt while preserving full shape",
+        );
+        return truncated;
+      }
+    }
+
+    return null;
+  };
+}
 
 function describePreviousParts(previousParts: string[] | undefined): string {
   if (!previousParts || previousParts.length === 0) return "";
@@ -332,13 +501,13 @@ router.post(
         `- Voiceover language: ${voiceoverLanguage}` +
           (voiceoverTone ? ` (tone: ${voiceoverTone})` : "") +
           (voiceoverScript
-            ? `\n  Use this pre-written script verbatim as autoVoiceoverScript: ${voiceoverScript}`
-            : `\n  No script provided — AUTO-WRITE the script for this part into autoVoiceoverScript only.`) +
-          `\n  REMINDER: voiceover lives ONLY in the autoVoiceoverScript JSON field. NEVER put a [VOICEOVER] header or any "VO:" line inside copyablePrompt.`,
+            ? `\n  Use this pre-written script verbatim, distributing its lines across the per-shot DIALOGUE bullets and re-stating the full script in the ## DIALOGUE & VOICEOVER section: ${voiceoverScript}`
+            : `\n  No script provided — AUTO-WRITE the dialogue per shot. Embed it inside copyablePrompt: per-shot DIALOGUE bullet (with character + language tag + lip-sync directive) AND a top-level ## DIALOGUE & VOICEOVER section listing every line. Also extract the same spoken text as a plain readable string into autoVoiceoverScript for the UI's voiceover panel.`) +
+          `\n  REMINDER: Seedance 2.0 GENERATES dialogue + lip-sync at video-generation time, so the dialogue MUST be embedded in copyablePrompt. autoVoiceoverScript is only a UI convenience field — never the only place dialogue lives.`,
       );
     } else {
       audioBlock.push(
-        `- Voiceover: NOT included for this video (autoVoiceoverScript should be null and copyablePrompt must contain no VO content).`,
+        `- Voiceover: NOT included. autoVoiceoverScript = null, audioSummary.voiceoverIncluded = false. The [VOICEOVER: ...] header line is omitted from copyablePrompt; per-shot DIALOGUE bullets all read "(silent — ambient only)"; the ## DIALOGUE & VOICEOVER section says exactly: "No voiceover for this part — ambient sound only."`,
       );
     }
     if (bgmStyle) {
@@ -347,11 +516,12 @@ router.post(
           (bgmTempo ? ` (${bgmTempo})` : "") +
           (bgmInstruments && bgmInstruments.length
             ? ` — instruments: ${bgmInstruments.join(", ")}`
-            : ""),
+            : "") +
+          `\n  Embed the BGM cues inside copyablePrompt: include the [BACKGROUND MUSIC: ...] header, the per-shot AUDIO bullet (with the BGM beat at that moment), and a BGM TRACK + BGM SYNC MAP block inside ## AUDIO DESIGN. Seedance generates the music itself; the prompt must give it explicit beat-sync points.`,
       );
     } else {
       audioBlock.push(
-        `- Background music: NOT included (omit the [BACKGROUND MUSIC: ...] header line from copyablePrompt).`,
+        `- Background music: NOT included. Omit the [BACKGROUND MUSIC: ...] header line and the BGM TRACK / BGM SYNC MAP block inside ## AUDIO DESIGN — keep only AMBIENT BED and SFX. audioSummary.bgmIncluded = false.`,
       );
     }
 
@@ -377,8 +547,11 @@ Output the JSON described in the system prompt.`;
         userPrompt,
         schema: GenerateVideoPromptsResponse,
         label: "generate-video-prompts",
-        validate: validateCopyablePromptLength,
-        finalRecover: recoverCopyablePromptLength,
+        validate: makeVideoPromptValidator(duration, "generate-video-prompts"),
+        finalRecover: makeRecoverCopyablePrompt(
+          duration,
+          "generate-video-prompts",
+        ),
       });
       res.json(result);
     } catch (err) {
@@ -420,13 +593,13 @@ router.post(
         `- Voiceover language: ${voiceoverLanguage}` +
           (voiceoverTone ? ` (tone: ${voiceoverTone})` : "") +
           (voiceoverScript
-            ? `\n  Use this pre-written script verbatim as autoVoiceoverScript: ${voiceoverScript}`
-            : `\n  No script provided — auto-write a fresh script into autoVoiceoverScript only if VO was present originally.`) +
-          `\n  REMINDER: voiceover lives ONLY in the autoVoiceoverScript JSON field. NEVER put a [VOICEOVER] header or any "VO:" line inside copyablePrompt.`,
+            ? `\n  Use this pre-written script verbatim, distributing its lines across the per-shot DIALOGUE bullets and re-stating it in the ## DIALOGUE & VOICEOVER section: ${voiceoverScript}`
+            : `\n  No script provided — keep / refresh the dialogue per shot inside copyablePrompt: per-shot DIALOGUE bullet (with character + language tag + lip-sync directive) AND a top-level ## DIALOGUE & VOICEOVER section. Also extract the spoken text into autoVoiceoverScript for the UI.`) +
+          `\n  REMINDER: Seedance 2.0 GENERATES dialogue + lip-sync at video-generation time, so the dialogue MUST be embedded in copyablePrompt. autoVoiceoverScript is only a UI convenience field.`,
       );
     } else {
       audioBlock.push(
-        `- Voiceover: NOT included (autoVoiceoverScript should be null and copyablePrompt must contain no VO content).`,
+        `- Voiceover: NOT included. autoVoiceoverScript = null. Omit the [VOICEOVER: ...] header; per-shot DIALOGUE bullets read "(silent — ambient only)"; the ## DIALOGUE & VOICEOVER section says exactly: "No voiceover for this part — ambient sound only."`,
       );
     }
     if (bgmStyle) {
@@ -435,11 +608,12 @@ router.post(
           (bgmTempo ? ` (${bgmTempo})` : "") +
           (bgmInstruments && bgmInstruments.length
             ? ` — instruments: ${bgmInstruments.join(", ")}`
-            : ""),
+            : "") +
+          `\n  Embed the BGM cues inside copyablePrompt: [BACKGROUND MUSIC: ...] header, per-shot AUDIO bullet, and a BGM TRACK + BGM SYNC MAP block inside ## AUDIO DESIGN.`,
       );
     } else {
       audioBlock.push(
-        `- Background music: NOT included (omit the [BACKGROUND MUSIC: ...] header line from copyablePrompt).`,
+        `- Background music: NOT included. Omit the [BACKGROUND MUSIC: ...] header and the BGM TRACK / BGM SYNC MAP block inside ## AUDIO DESIGN — keep only AMBIENT BED and SFX.`,
       );
     }
 
@@ -472,8 +646,8 @@ Output the COMPLETE refined VideoPromptsResponse JSON.`;
         userPrompt,
         schema: EditVideoPromptsResponse,
         label: "edit-video-prompts",
-        validate: validateCopyablePromptLength,
-        finalRecover: recoverCopyablePromptLength,
+        validate: makeVideoPromptValidator(duration, "edit-video-prompts"),
+        finalRecover: makeRecoverCopyablePrompt(duration, "edit-video-prompts"),
       });
       res.json(result);
     } catch (err) {

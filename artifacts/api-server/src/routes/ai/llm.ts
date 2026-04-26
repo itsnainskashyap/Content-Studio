@@ -2,19 +2,22 @@ import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { logger } from "../../lib/logger";
 
 const MODEL = "claude-sonnet-4-6";
-// Per-route max output token budget. The video-prompts JSON has a strict
-// copyablePrompt size of 4200-4500 chars (~1500-2000 tokens) plus the
+// Per-route max output token budget. The all-in-one Seedance video-prompts
+// JSON has a relaxed copyablePrompt size of ~5000-28000 chars
+// (typically 12000-22000 for a 15s part — embeds 7-bullet shots with
+// dialogue + audio, plus the ## DIALOGUE & VOICEOVER and ## AUDIO DESIGN
+// sections). That's ~3000-5000 tokens just for copyablePrompt. Plus the
 // structured shots / effectsInventory / densityMap / energyArc fields
-// (~1500 tokens) plus an autoVoiceoverScript that can be HEAVY in
-// Devanagari (Hindi) where each character costs ~2x the tokens of English
-// — a 90s Hindi VO can easily reach 1500+ tokens by itself. Realistic
-// worst-case output is ~5.5-7.5K tokens, so we cap at 12000 for safe ~2x
-// headroom. The cap doesn't affect latency — actual generation time
-// scales with tokens produced, not with the cap. The latency win comes
-// from the strict 4200-4500 char copyablePrompt rule baked into the
-// system prompt, which keeps the model from rambling.
+// (~1500-2500 tokens) plus an autoVoiceoverScript that can be HEAVY in
+// Devanagari/Hinglish (each Devanagari char costs ~2x the tokens of
+// English — a 90s Hindi VO can easily reach 1500+ tokens by itself).
+// Realistic worst-case output is ~12-16K tokens (a 28K-char copyablePrompt
+// is ~7K tokens, plus ~2-3K tokens for the structured shots / inventory /
+// densityMap / energyArc, plus an autoVoiceoverScript), so we cap at
+// 20000 to give comfortable headroom. The cap doesn't affect latency —
+// actual generation time scales with tokens produced, not with the cap.
 const DEFAULT_MAX_TOKENS = 8192;
-const VIDEO_PROMPTS_MAX_TOKENS = 12000;
+const VIDEO_PROMPTS_MAX_TOKENS = 20000;
 
 function maxTokensForLabel(label: string): number {
   if (label === "generate-video-prompts") return VIDEO_PROMPTS_MAX_TOKENS;
